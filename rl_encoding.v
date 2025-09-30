@@ -1357,6 +1357,7 @@ Proof.
   apply encode_is_minimal with (l := l); auto; unfold decodes_to; exact Hdec.
 Qed.
 
+
 Theorem minimal_encoding_is_canonical : forall l runs,
   well_formed_rle runs ->
   is_valid_rle runs ->
@@ -1409,6 +1410,54 @@ Proof.
   - apply rle_encode_aux_positive with (val := n) (count := 1) (l := l).
     + lia.
     + exact H.
+Qed.
+
+Lemma rle_encode_is_valid : forall l,
+  l <> [] ->
+  is_valid_rle (rle_encode l).
+Proof.
+  intros l Hne.
+  unfold is_valid_rle. intros r Hr.
+  apply rle_encode_never_zero_count with l. exact Hr.
+Qed.
+
+Theorem fundamental_theorem_of_rle : forall l,
+  l <> [] ->
+  exists! encoding,
+    well_formed_rle encoding /\
+    is_valid_rle encoding /\
+    rle_decode encoding = l /\
+    (forall other_encoding,
+      well_formed_rle other_encoding ->
+      is_valid_rle other_encoding ->
+      rle_decode other_encoding = l ->
+      length encoding <= length other_encoding).
+Proof.
+  intros l Hne.
+  exists (rle_encode l).
+  unfold unique. split.
+  - split; [|split; [|split]].
+    + apply encode_well_formed. exact Hne.
+    + apply rle_encode_is_valid. exact Hne.
+    + apply rle_correct.
+    + intros other Hwf Hval Hdec.
+      apply rle_encode_achieves_minimum; auto.
+  - intros encoding' [Hwf' [Hval' [Hdec' Hmin']]].
+    assert (Hlen_eq: length encoding' = length (rle_encode l)).
+    { assert (length encoding' <= length (rle_encode l)).
+      { apply Hmin'; auto.
+        - apply encode_well_formed. exact Hne.
+        - apply rle_encode_is_valid. exact Hne.
+        - apply rle_correct. }
+      assert (length (rle_encode l) <= length encoding').
+      { apply rle_encode_achieves_minimum; auto. }
+      lia. }
+    apply (wf_encoding_minimal_implies_unique l (rle_encode l) encoding'); auto.
+    + apply encode_well_formed. exact Hne.
+    + apply rle_encode_is_valid. exact Hne.
+    + apply rle_correct.
+    + apply rle_length.
+    + rewrite Hlen_eq. apply rle_length.
 Qed.
 
 Definition sanitize_runs (runs : list run) : list run :=
@@ -2436,11 +2485,10 @@ Proof.
   intros l Hbound. apply rle_correct.
 Qed.
 
-Theorem rle_correct_bounded_explicit : forall l : list nat,
-  (forall x, In x l -> x < 2^63) ->
+Theorem rle_correct_unbounded : forall l : list nat,
   rle_decode (rle_encode l) = l.
 Proof.
-  intros l Hbound. apply rle_correct.
+  apply rle_correct.
 Qed.
 
 Theorem rle_roundtrip_preserves_bounds : forall l : list nat,
@@ -2496,16 +2544,16 @@ From Coq Require Import ExtrOcamlString.
 
 Extraction Language OCaml.
 
-Extract Inductive bool => "bool" [ "true" "false" ].
-Extract Inductive list => "list" [ "[]" "(::)" ].
-Extract Inductive prod => "( * )" [ "(,)" ].
-
 Set Extraction Optimize.
 Set Extraction Conservative Types.
 Set Extraction KeepSingleton.
 Set Extraction AutoInline.
 
 Extraction Blacklist List String Int.
+
+Extract Inductive bool => "bool" [ "true" "false" ].
+Extract Inductive list => "list" [ "[]" "(::)" ].
+Extract Inductive prod => "( * )" [ "(,)" ].
 
 Extraction Inline Nat.add Nat.sub Nat.mul Nat.div Nat.modulo.
 Extraction Inline Nat.leb Nat.ltb Nat.eqb.
@@ -3872,7 +3920,6 @@ Extract Constant Nat.div => "(/)".
 Extract Constant Nat.modulo => "(mod)".
 Extract Constant Nat.pow =>
   "(fun x y -> int_of_float ((float_of_int x) ** (float_of_int y)))".
-(* Extract to min(max_int, 2^30-1) for portability and safety *)
 Extract Constant max_int_runtime => "min Stdlib.max_int 1073741823".
 Extract Constant max_int_8 => "255".
 Extract Constant max_int_16 => "65535".
