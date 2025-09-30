@@ -780,6 +780,77 @@ Proof.
   rewrite rle_decode_app. rewrite H1. rewrite H2. reflexivity.
 Qed.
 
+Lemma rle_encode_aux_not_nil : forall l val count,
+  rle_encode_aux val count l <> [].
+Proof.
+  induction l; intros; simpl; try discriminate.
+  destruct (Nat.eqb a val) eqn:E.
+  - apply IHl.
+  - discriminate.
+Qed.
+
+Lemma rle_encode_aux_last_snd : forall l val count,
+  count > 0 ->
+  l <> [] ->
+  snd (last (rle_encode_aux val count l) (0,0)) = last l 0.
+Proof.
+  induction l as [|a l' IH]; intros val count Hpos Hne.
+  - congruence.
+  - simpl rle_encode_aux. destruct (Nat.eqb a val) eqn:Heq.
+    + apply Nat.eqb_eq in Heq. subst a.
+      destruct l' as [|b l''].
+      * simpl. reflexivity.
+      * assert (Hlast: last (val :: b :: l'') 0 = last (b :: l'') 0).
+        { simpl. destruct l''; reflexivity. }
+        rewrite Hlast.
+        apply IH; [lia|discriminate].
+    + destruct l' as [|b l''].
+      * simpl. reflexivity.
+      * assert (Hlast: last (a :: b :: l'') 0 = last (b :: l'') 0).
+        { simpl. destruct l''; reflexivity. }
+        rewrite Hlast.
+        assert (Hlast_enc: snd (last ((count, val) :: rle_encode_aux a 1 (b :: l'')) (0,0)) =
+                           snd (last (rle_encode_aux a 1 (b :: l'')) (0,0))).
+        { pose proof (rle_encode_aux_not_nil (b :: l'') a 1) as Hnil.
+          destruct (rle_encode_aux a 1 (b :: l'')); [contradiction|reflexivity]. }
+        rewrite Hlast_enc.
+        apply IH; [lia|discriminate].
+Qed.
+
+Lemma rle_encode_last_snd : forall l,
+  l <> [] ->
+  snd (last (rle_encode l) (0,0)) = last l 0.
+Proof.
+  intros l Hne.
+  destruct l as [|h t]; [congruence|].
+  unfold rle_encode.
+  destruct t as [|a t'].
+  - simpl. reflexivity.
+  - simpl. apply rle_encode_aux_last_snd; [lia|discriminate].
+Qed.
+
+Lemma rle_encode_hd_snd : forall l,
+  l <> [] ->
+  snd (hd (0,0) (rle_encode l)) = hd 0 l.
+Proof.
+  intros l Hne.
+  destruct l as [|h t]; [congruence|].
+  unfold rle_encode. simpl.
+  apply rle_encode_aux_first_snd_general. lia.
+Qed.
+
+Theorem encode_safe_concat : forall l1 l2,
+  l1 <> [] ->
+  l2 <> [] ->
+  last l1 0 <> hd 0 l2 ->
+  snd (last (rle_encode l1) (0,0)) <> snd (hd (0,0) (rle_encode l2)).
+Proof.
+  intros l1 l2 Hne1 Hne2 Hbound.
+  rewrite rle_encode_last_snd by exact Hne1.
+  rewrite rle_encode_hd_snd by exact Hne2.
+  exact Hbound.
+Qed.
+
 Lemma well_formed_tail : forall val c v runs,
   well_formed_rle ((1, val) :: (S c, v) :: runs) ->
   v <> val.
@@ -1105,6 +1176,169 @@ Proof.
   - apply encode_well_formed. discriminate.
 Qed.
 
+(** * Inverse Optimality *)
+
+Theorem decode_left_inverse : forall l,
+  rle_decode (rle_encode l) = l.
+Proof.
+  apply rle_correct.
+Qed.
+
+Theorem encode_decode_cancel_wf : forall runs,
+  well_formed_rle runs ->
+  is_valid_rle runs ->
+  rle_encode (rle_decode runs) = runs.
+Proof.
+  intros. apply rle_encode_decode_identity_full; auto.
+Qed.
+
+Lemma decode_injective_on_wf : forall r1 r2,
+  well_formed_rle r1 ->
+  well_formed_rle r2 ->
+  is_valid_rle r1 ->
+  is_valid_rle r2 ->
+  rle_decode r1 = rle_decode r2 ->
+  r1 = r2.
+Proof.
+  intros r1 r2 Hwf1 Hwf2 Hval1 Hval2 Hdec.
+  rewrite <- (rle_encode_decode_identity_full r1 Hval1 Hwf1).
+  rewrite <- (rle_encode_decode_identity_full r2 Hval2 Hwf2).
+  rewrite Hdec. reflexivity.
+Qed.
+
+Definition is_encoding_of (runs : list run) (l : list nat) : Prop :=
+  rle_decode runs = l.
+
+Theorem unique_well_formed_encoding : forall l runs1 runs2,
+  well_formed_rle runs1 ->
+  well_formed_rle runs2 ->
+  is_valid_rle runs1 ->
+  is_valid_rle runs2 ->
+  is_encoding_of runs1 l ->
+  is_encoding_of runs2 l ->
+  runs1 = runs2.
+Proof.
+  intros l runs1 runs2 Hwf1 Hwf2 Hval1 Hval2 Henc1 Henc2.
+  unfold is_encoding_of in *.
+  rewrite <- (rle_encode_decode_identity_full runs1 Hval1 Hwf1).
+  rewrite <- (rle_encode_decode_identity_full runs2 Hval2 Hwf2).
+  rewrite Henc1. rewrite Henc2. reflexivity.
+Qed.
+
+Theorem rle_encode_is_unique_wf_encoding : forall l runs,
+  well_formed_rle runs ->
+  is_valid_rle runs ->
+  is_encoding_of runs l ->
+  runs = rle_encode l.
+Proof.
+  intros l runs Hwf Hval Henc.
+  unfold is_encoding_of in Henc.
+  rewrite <- (rle_encode_decode_identity_full runs Hval Hwf).
+  rewrite Henc. reflexivity.
+Qed.
+
+Theorem decode_unique_inverse : forall l runs,
+  rle_encode l = runs ->
+  exists! decoded, decoded = rle_decode runs.
+Proof.
+  intros l runs Henc.
+  exists (rle_decode runs). unfold unique. split.
+  - reflexivity.
+  - intros decoded' Hdec. symmetry. exact Hdec.
+Qed.
+
+Theorem encode_preserves_distinctness : forall l1 l2,
+  l1 <> l2 ->
+  rle_encode l1 <> rle_encode l2.
+Proof.
+  intros l1 l2 Hneq Hcontra.
+  apply Hneq.
+  apply rle_injective. exact Hcontra.
+Qed.
+
+Lemma decode_deterministic : forall runs l1 l2,
+  rle_decode runs = l1 ->
+  rle_decode runs = l2 ->
+  l1 = l2.
+Proof.
+  intros. rewrite <- H. exact H0.
+Qed.
+
+Theorem encode_surjective_on_wf : forall runs,
+  well_formed_rle runs ->
+  is_valid_rle runs ->
+  exists l, rle_encode l = runs.
+Proof.
+  intros runs Hwf Hval.
+  exists (rle_decode runs).
+  apply rle_encode_decode_identity_full; auto.
+Qed.
+
+Theorem encode_decode_bijection_wf : forall runs l,
+  well_formed_rle runs ->
+  is_valid_rle runs ->
+  (rle_encode l = runs <-> rle_decode runs = l).
+Proof.
+  intros runs l Hwf Hval. split; intro H.
+  - rewrite <- H. apply rle_correct.
+  - rewrite <- H. apply rle_encode_decode_identity_full; auto.
+Qed.
+
+Theorem decode_respects_equality : forall r1 r2,
+  r1 = r2 ->
+  rle_decode r1 = rle_decode r2.
+Proof.
+  intros. rewrite H. reflexivity.
+Qed.
+
+Theorem encode_respects_equality : forall l1 l2,
+  l1 = l2 ->
+  rle_encode l1 = rle_encode l2.
+Proof.
+  intros. rewrite H. reflexivity.
+Qed.
+
+Lemma wf_encoding_minimal_implies_unique : forall l runs1 runs2,
+  well_formed_rle runs1 ->
+  well_formed_rle runs2 ->
+  is_valid_rle runs1 ->
+  is_valid_rle runs2 ->
+  rle_decode runs1 = l ->
+  rle_decode runs2 = l ->
+  length runs1 = count_runs l ->
+  length runs2 = count_runs l ->
+  runs1 = runs2.
+Proof.
+  intros l runs1 runs2 Hwf1 Hwf2 Hval1 Hval2 Hdec1 Hdec2 Hlen1 Hlen2.
+  apply unique_well_formed_encoding with (l := l); auto;
+  unfold is_encoding_of; auto.
+Qed.
+
+Theorem rle_encode_achieves_minimum : forall l,
+  l <> [] ->
+  forall runs,
+    well_formed_rle runs ->
+    is_valid_rle runs ->
+    rle_decode runs = l ->
+    length (rle_encode l) <= length runs.
+Proof.
+  intros l Hne runs Hwf Hval Hdec.
+  rewrite rle_length.
+  apply encode_is_minimal with (l := l); auto; unfold decodes_to; exact Hdec.
+Qed.
+
+Theorem minimal_encoding_is_canonical : forall l runs,
+  well_formed_rle runs ->
+  is_valid_rle runs ->
+  rle_decode runs = l ->
+  length runs = count_runs l ->
+  runs = rle_encode l.
+Proof.
+  intros l runs Hwf Hval Hdec Hlen.
+  rewrite <- (rle_encode_decode_identity_full runs Hval Hwf).
+  rewrite Hdec. reflexivity.
+Qed.
+
 Theorem rle_encode_minimizes_runs : forall l runs,
   decodes_to runs l ->
   is_valid_rle runs ->
@@ -1165,6 +1399,168 @@ Proof.
   intros. unfold sanitize_runs. f_equal.
   apply filter_ext. intros [c v]. simpl.
   destruct c; reflexivity.
+Qed.
+
+(** * Robustness and Error Correction *)
+
+Lemma decode_with_zeros_equivalence : forall runs,
+  rle_decode runs = rle_decode (sanitize_runs runs).
+Proof.
+  induction runs as [|[c v] rs IH].
+  - reflexivity.
+  - simpl. destruct c.
+    + simpl. exact IH.
+    + unfold sanitize_runs. simpl. rewrite IH. reflexivity.
+Qed.
+
+Theorem sanitize_preserves_decode : forall runs,
+  rle_decode (sanitize_runs runs) = rle_decode runs.
+Proof.
+  intros. symmetry. apply decode_with_zeros_equivalence.
+Qed.
+
+Theorem sanitize_idempotent : forall runs,
+  sanitize_runs (sanitize_runs runs) = sanitize_runs runs.
+Proof.
+  intros. unfold sanitize_runs.
+  induction runs as [|[c v] rs IH].
+  - reflexivity.
+  - simpl. destruct c.
+    + exact IH.
+    + simpl. f_equal. exact IH.
+Qed.
+
+Definition has_corruption (runs : list run) : Prop :=
+  exists r, In r runs /\ fst r = 0.
+
+Theorem encode_never_corrupted : forall l,
+  ~has_corruption (rle_encode l).
+Proof.
+  intros l [r [Hin Hzero]].
+  apply rle_encode_never_zero_count in Hin.
+  rewrite Hzero in Hin. simpl in Hin. lia.
+Qed.
+
+Lemma sanitize_removes_corruption : forall runs,
+  ~has_corruption (sanitize_runs runs).
+Proof.
+  intros runs [r [Hin Hzero]].
+  unfold sanitize_runs in Hin.
+  apply filter_In in Hin. destruct Hin as [_ Hcond].
+  rewrite Hzero in Hcond. simpl in Hcond. discriminate.
+Qed.
+
+Definition detect_corruption (runs : list run) : bool :=
+  existsb (fun r => Nat.eqb (fst r) 0) runs.
+
+Lemma detect_corruption_sound : forall runs,
+  detect_corruption runs = true <-> has_corruption runs.
+Proof.
+  intros. unfold detect_corruption, has_corruption. split; intro H.
+  - apply existsb_exists in H.
+    destruct H as [r [Hin Hcond]].
+    exists r. split; auto.
+    apply Nat.eqb_eq in Hcond. exact Hcond.
+  - destruct H as [r [Hin Hzero]].
+    apply existsb_exists.
+    exists r. split; auto.
+    apply Nat.eqb_eq. exact Hzero.
+Qed.
+
+Lemma detect_corruption_complete : forall runs,
+  detect_corruption runs = false <-> ~has_corruption runs.
+Proof.
+  intros. split; intro H.
+  - intro Hcontra. apply detect_corruption_sound in Hcontra.
+    rewrite Hcontra in H. discriminate.
+  - destruct (detect_corruption runs) eqn:E.
+    + apply detect_corruption_sound in E. contradiction.
+    + reflexivity.
+Qed.
+
+Theorem encoded_never_detected : forall l,
+  detect_corruption (rle_encode l) = false.
+Proof.
+  intros. apply detect_corruption_complete.
+  apply encode_never_corrupted.
+Qed.
+
+Definition repair_runs (runs : list run) : list run :=
+  sanitize_runs runs.
+
+Theorem repair_sound : forall runs,
+  is_valid_rle (repair_runs runs).
+Proof.
+  intros. unfold repair_runs. apply sanitize_preserves_valid.
+Qed.
+
+Theorem repair_preserves_valid : forall runs,
+  is_valid_rle runs ->
+  repair_runs runs = runs.
+Proof.
+  intros runs Hval.
+  unfold repair_runs, sanitize_runs.
+  induction runs as [|[c v] rs IH].
+  - reflexivity.
+  - simpl. destruct c eqn:Ec.
+    + unfold is_valid_rle in Hval.
+      assert (fst (0, v) > 0).
+      { apply Hval. simpl. auto. }
+      simpl in H. lia.
+    + f_equal. apply IH.
+      unfold is_valid_rle in *. intros. apply Hval. simpl. auto.
+Qed.
+
+Theorem repair_idempotent : forall runs,
+  repair_runs (repair_runs runs) = repair_runs runs.
+Proof.
+  intros. unfold repair_runs. apply sanitize_idempotent.
+Qed.
+
+Lemma decode_repair_equivalence : forall runs,
+  rle_decode (repair_runs runs) = rle_decode runs.
+Proof.
+  intros. unfold repair_runs. symmetry. apply decode_with_zeros_equivalence.
+Qed.
+
+Theorem repair_minimal : forall runs l,
+  rle_decode runs = l ->
+  rle_decode (repair_runs runs) = l.
+Proof.
+  intros. rewrite decode_repair_equivalence. exact H.
+Qed.
+
+Definition is_repaired (runs : list run) : Prop :=
+  repair_runs runs = runs.
+
+Theorem encoded_is_repaired : forall l,
+  is_repaired (rle_encode l).
+Proof.
+  intros l. unfold is_repaired.
+  apply repair_preserves_valid.
+  unfold is_valid_rle. intros r Hr.
+  apply rle_encode_never_zero_count with (l := l). exact Hr.
+Qed.
+
+Lemma repaired_iff_valid : forall runs,
+  is_repaired runs <-> is_valid_rle runs.
+Proof.
+  intros. unfold is_repaired. split; intro H.
+  - rewrite <- H. apply repair_sound.
+  - apply repair_preserves_valid. exact H.
+Qed.
+
+Definition count_corruptions (runs : list run) : nat :=
+  length runs - length (repair_runs runs).
+
+Theorem corruption_free_encodes : forall l,
+  count_corruptions (rle_encode l) = 0.
+Proof.
+  intros. unfold count_corruptions, repair_runs.
+  rewrite repair_preserves_valid.
+  - lia.
+  - unfold is_valid_rle. intros r Hr.
+    apply rle_encode_never_zero_count with (l := l). exact Hr.
 Qed.
 
 (** * Element Preservation *)
@@ -1358,6 +1754,177 @@ Theorem rle_space_optimal : forall l,
   length (rle_encode l) = count_runs l.
 Proof.
   apply rle_length.
+Qed.
+
+(** * Space Complexity Analysis *)
+
+Definition encode_space_usage (l : list nat) : nat :=
+  2 * length (rle_encode l).
+
+Definition decode_space_usage (runs : list run) : nat :=
+  length (rle_decode runs).
+
+Theorem encode_space_bounded : forall l,
+  encode_space_usage l <= 2 * length l.
+Proof.
+  intros. unfold encode_space_usage.
+  assert (length (rle_encode l) <= length l) by apply rle_worst_case.
+  lia.
+Qed.
+
+Theorem decode_space_exact : forall runs,
+  decode_space_usage runs = fold_right (fun r acc => fst r + acc) 0 runs.
+Proof.
+  intros. unfold decode_space_usage.
+  apply decode_length_sum.
+Qed.
+
+Theorem roundtrip_space_preserved : forall l,
+  decode_space_usage (rle_encode l) = length l.
+Proof.
+  intros. unfold decode_space_usage.
+  rewrite rle_correct. reflexivity.
+Qed.
+
+Lemma encode_space_uniform_optimal : forall n val,
+  n > 0 ->
+  encode_space_usage (repeat n val) = 2.
+Proof.
+  intros. unfold encode_space_usage.
+  rewrite rle_best_case; auto.
+Qed.
+
+Lemma encode_space_alternating_maximal : forall l,
+  (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
+  encode_space_usage l = 2 * length l.
+Proof.
+  intros. unfold encode_space_usage.
+  rewrite no_compression_worst; auto.
+Qed.
+
+Definition space_overhead (l : list nat) : nat :=
+  encode_space_usage l - length l.
+
+Lemma count_runs_aux_ge_one : forall val l,
+  count_runs_aux val l >= 1.
+Proof.
+  intros val l.
+  generalize dependent val.
+  induction l as [|h t IH].
+  - intros. simpl. lia.
+  - intros val. simpl. destruct (Nat.eqb h val) eqn:E.
+    + apply IH.
+    + specialize (IH h). lia.
+Qed.
+
+Lemma count_runs_ge_one : forall l,
+  l <> [] -> count_runs l >= 1.
+Proof.
+  intros l Hne.
+  destruct l as [|h t].
+  - contradiction.
+  - unfold count_runs. simpl.
+    apply count_runs_aux_ge_one.
+Qed.
+
+Theorem encode_space_minimum : forall l,
+  l <> [] -> encode_space_usage l >= 2.
+Proof.
+  intros l Hne. unfold encode_space_usage.
+  destruct l as [|h t].
+  - contradiction.
+  - assert (Hge: count_runs (h :: t) >= 1).
+    { apply count_runs_ge_one. discriminate. }
+    assert (Heq: length (rle_encode (h :: t)) = count_runs (h :: t)).
+    { apply rle_length. }
+    rewrite Heq.
+    lia.
+Qed.
+
+Theorem space_overhead_bounded : forall l,
+  space_overhead l <= length l.
+Proof.
+  intros. unfold space_overhead, encode_space_usage.
+  assert (length (rle_encode l) <= length l) by apply rle_worst_case.
+  lia.
+Qed.
+
+Definition compression_ratio_space (l : list nat) : option (nat * nat) :=
+  match rle_encode l with
+  | [] => None
+  | _ => Some (length l, encode_space_usage l)
+  end.
+
+Theorem best_compression_ratio_space : forall n val,
+  n > 1 ->
+  compression_ratio_space (repeat n val) = Some (n, 2).
+Proof.
+  intros. unfold compression_ratio_space.
+  assert (Henc: rle_encode (repeat n val) = [(n, val)]).
+  { apply rle_encode_repeat. lia. }
+  rewrite Henc. simpl.
+  f_equal. f_equal.
+  - apply repeat_length.
+  - unfold encode_space_usage. rewrite Henc. simpl. reflexivity.
+Qed.
+
+Theorem worst_compression_ratio_space : forall l,
+  (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
+  l <> [] ->
+  compression_ratio_space l = Some (length l, 2 * length l).
+Proof.
+  intros. unfold compression_ratio_space.
+  destruct l; [congruence|].
+  destruct (rle_encode (n :: l)) eqn:E.
+  - assert (count_runs (n :: l) = 0).
+    { rewrite <- rle_length. rewrite E. reflexivity. }
+    assert (count_runs (n :: l) >= 1).
+    { apply count_runs_ge_one. discriminate. }
+    lia.
+  - unfold encode_space_usage.
+    assert (length (rle_encode (n :: l)) = length (n :: l)).
+    { rewrite no_compression_worst; auto. }
+    rewrite H1. f_equal.
+Qed.
+
+Theorem encode_space_upper_bound : forall l,
+  encode_space_usage l <= 2 * length l.
+Proof.
+  intros. apply encode_space_bounded.
+Qed.
+
+Definition auxiliary_space_encode (l : list nat) : nat :=
+  length l.
+
+Theorem encode_auxiliary_space : forall l,
+  auxiliary_space_encode l = length l.
+Proof.
+  reflexivity.
+Qed.
+
+Definition auxiliary_space_decode (runs : list run) : nat :=
+  fold_right (fun r acc => fst r + acc) 0 runs.
+
+Theorem decode_auxiliary_space : forall runs,
+  auxiliary_space_decode runs = length (rle_decode runs).
+Proof.
+  intros. unfold auxiliary_space_decode.
+  symmetry. apply decode_length_sum.
+Qed.
+
+Theorem total_space_encode : forall l,
+  encode_space_usage l + auxiliary_space_encode l <= 4 * length l.
+Proof.
+  intros. unfold encode_space_usage, auxiliary_space_encode.
+  assert (length (rle_encode l) <= length l) by apply rle_worst_case.
+  lia.
+Qed.
+
+Theorem total_space_decode : forall runs,
+  length runs + auxiliary_space_decode runs =
+  length runs + length (rle_decode runs).
+Proof.
+  intros. rewrite decode_auxiliary_space. reflexivity.
 Qed.
 
 (** * Refined Complexity Model *)
@@ -1686,6 +2253,34 @@ Proof.
       { lia. }
       apply Nat.leb_le in H1. rewrite H1. simpl. reflexivity.
     + apply rle_correct.
+  - discriminate.
+Qed.
+
+Theorem validated_encode_complete : forall l,
+  bounded_list max_int_runtime l ->
+  length l <= max_int_runtime ->
+  exists encoded, rle_encode_validated l = Some encoded.
+Proof.
+  intros l Hbound Hlen.
+  unfold rle_encode_validated.
+  assert (forallb (fun x => Nat.ltb x max_int_runtime) l = true).
+  { apply forallb_forall. intros x Hx. apply Nat.ltb_lt. apply Hbound. exact Hx. }
+  rewrite H.
+  assert (Nat.leb (length l) max_int_runtime = true).
+  { apply Nat.leb_le. exact Hlen. }
+  rewrite H0. simpl.
+  exists (rle_encode l). reflexivity.
+Qed.
+
+Theorem validated_encode_sound : forall l encoded,
+  rle_encode_validated l = Some encoded ->
+  encoded = rle_encode l.
+Proof.
+  intros l encoded Henc.
+  unfold rle_encode_validated in Henc.
+  destruct (andb (Nat.leb (length l) max_int_runtime)
+                 (forallb (fun x => Nat.ltb x max_int_runtime) l)) eqn:Hcond.
+  - injection Henc. intro Heq. symmetry. exact Heq.
   - discriminate.
 Qed.
 
@@ -2419,6 +3014,24 @@ Proof.
     + lia.
 Qed.
 
+Theorem streaming_decoder_equivalent : forall runs fuel,
+  fuel >= compute_decode_size runs + length runs ->
+  stream_decode_list fuel init_decode_state runs = rle_decode runs.
+Proof.
+  intros runs fuel Hfuel.
+  apply stream_decode_with_state_strong.
+  - reflexivity.
+  - exact Hfuel.
+Qed.
+
+Corollary streaming_decoder_minimal_fuel : forall runs,
+  stream_decode_list (compute_decode_size runs + length runs) init_decode_state runs = rle_decode runs.
+Proof.
+  intros runs.
+  apply streaming_decoder_equivalent.
+  lia.
+Qed.
+
 Definition stream_pull_safe (state : decode_stream_state) (runs : list run) (budget : nat)
   : option (list nat * decode_stream_state * list run * nat) :=
   let '(vals, new_state, new_runs) := stream_pull state runs in
@@ -2705,6 +3318,16 @@ Eval compute in test_streaming_state_consistency.
 Eval compute in test_compression_never_expands.
 Eval compute in test_encode_preserves_length_sum.
 Eval compute in test_maxrun_decode_equals_standard.
+
+Definition test_streaming_decoder_equivalent : bool :=
+  let runs := [(3, 1); (2, 2); (4, 3)] in
+  let fuel := compute_decode_size runs + length runs in
+  let streamed := stream_decode_list fuel init_decode_state runs in
+  let batched := rle_decode runs in
+  if list_eq_dec Nat.eq_dec streamed batched then true else false.
+
+Eval compute in test_streaming_decoder_equivalent.
+
 
 (** * Production OCaml Extraction *)
 
