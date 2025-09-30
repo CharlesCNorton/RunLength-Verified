@@ -808,13 +808,12 @@ Proof.
       * simpl. reflexivity.
       * assert (Hlast: last (a :: b :: l'') 0 = last (b :: l'') 0).
         { simpl. destruct l''; reflexivity. }
-        rewrite Hlast.
-        assert (Hlast_enc: snd (last ((count, val) :: rle_encode_aux a 1 (b :: l'')) (0,0)) =
-                           snd (last (rle_encode_aux a 1 (b :: l'')) (0,0))).
-        { pose proof (rle_encode_aux_not_nil (b :: l'') a 1) as Hnil.
-          destruct (rle_encode_aux a 1 (b :: l'')); [contradiction|reflexivity]. }
-        rewrite Hlast_enc.
-        apply IH; [lia|discriminate].
+        rewrite Hlast. clear Hlast.
+        assert (Henc_last: snd (last (rle_encode_aux a 1 (b :: l'')) (0,0)) = last (b :: l'') 0).
+        { apply IH; [lia|discriminate]. }
+        pose proof (rle_encode_aux_not_nil (b :: l'') a 1) as Hnil.
+        destruct (rle_encode_aux a 1 (b :: l'')) eqn:Eenc; [contradiction|].
+        simpl. exact Henc_last.
 Qed.
 
 Lemma rle_encode_last_snd : forall l,
@@ -826,7 +825,9 @@ Proof.
   unfold rle_encode.
   destruct t as [|a t'].
   - simpl. reflexivity.
-  - simpl. apply rle_encode_aux_last_snd; [lia|discriminate].
+  - replace (last (h :: a :: t') 0) with (last (a :: t') 0).
+    + apply rle_encode_aux_last_snd; [lia|discriminate].
+    + simpl. destruct t'; reflexivity.
 Qed.
 
 Lemma rle_encode_hd_snd : forall l,
@@ -836,6 +837,11 @@ Proof.
   intros l Hne.
   destruct l as [|h t]; [congruence|].
   unfold rle_encode. simpl.
+  assert (Heq: hd (0,0) (rle_encode_aux h 1 t) = nth 0 (rle_encode_aux h 1 t) (0,0)).
+  { destruct (rle_encode_aux h 1 t) eqn:E.
+    - pose proof (rle_encode_aux_not_nil t h 1). congruence.
+    - reflexivity. }
+  rewrite Heq.
   apply rle_encode_aux_first_snd_general. lia.
 Qed.
 
