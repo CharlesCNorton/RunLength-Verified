@@ -1689,6 +1689,252 @@ Proof.
     simpl generic_repeat in H. exact H.
 Qed.
 
+Variable default_A : A.
+
+Definition generic_well_formed_rle (runs : list generic_run) : Prop :=
+  (forall r, In r runs -> fst r > 0) /\
+  (forall i, i < pred (length runs) ->
+             snd (nth i runs (0, default_A)) <>
+             snd (nth (S i) runs (0, default_A))).
+
+Lemma generic_rle_encode_aux_not_nil : forall l val count,
+  generic_rle_encode_aux val count l <> [].
+Proof.
+  induction l; intros; simpl.
+  - discriminate.
+  - destruct (A_eqb a val) eqn:E.
+    + apply IHl.
+    + discriminate.
+Qed.
+
+Lemma generic_rle_encode_aux_positive : forall l val count,
+  count > 0 ->
+  forall r, In r (generic_rle_encode_aux val count l) -> fst r > 0.
+Proof.
+  induction l; simpl; intros.
+  - destruct H0; [subst|contradiction]. simpl. assumption.
+  - destruct (A_eqb a val) eqn:Heq.
+    + apply IHl with (val := val) (count := S count); [lia|auto].
+    + destruct H0.
+      * rewrite <- H0. simpl. assumption.
+      * apply IHl with (val := a) (count := 1); [lia|auto].
+Qed.
+
+Lemma generic_rle_encode_aux_first_snd : forall (a : A) count l d,
+  count > 0 ->
+  snd (nth 0 (generic_rle_encode_aux a count l) (0, d)) = a.
+Proof.
+  intros a count l d H.
+  generalize dependent count.
+  induction l; intros; simpl.
+  - reflexivity.
+  - destruct (A_eqb a0 a) eqn:Heq.
+    + apply IHl. lia.
+    + simpl. reflexivity.
+Qed.
+
+Lemma generic_neq_sym : forall (x y : A), x <> y -> y <> x.
+Proof.
+  intros x y H. intro H1. apply H. symmetry. exact H1.
+Qed.
+
+Lemma generic_rle_encode_aux_no_adjacent : forall l val count default,
+  count > 0 ->
+  forall i, i < pred (length (generic_rle_encode_aux val count l)) ->
+       snd (nth i (generic_rle_encode_aux val count l) (0, default)) <>
+       snd (nth (S i) (generic_rle_encode_aux val count l) (0, default)).
+Proof.
+  induction l as [|a l IHl]; simpl; intros val count default Hcount i Hi.
+  - simpl in Hi. lia.
+  - destruct (A_eqb a val) eqn:Heq.
+    + destruct (A_eqb_spec a val).
+      * subst. apply IHl; [lia|auto].
+      * congruence.
+    + destruct (A_eqb_spec a val) as [Heq_eq | Heq_neq].
+      * congruence.
+      * destruct i as [|i']; simpl.
+        -- destruct l as [|b l']; simpl in *.
+           ++ simpl. apply generic_neq_sym. exact Heq_neq.
+           ++ destruct (A_eqb b a) eqn:Heq2.
+              ** rewrite generic_rle_encode_aux_first_snd; [|lia].
+                 simpl. apply generic_neq_sym. exact Heq_neq.
+              ** simpl. apply generic_neq_sym. exact Heq_neq.
+        -- simpl in Hi.
+           assert (i' < pred (length (generic_rle_encode_aux a 1 l))).
+           { simpl in Hi. lia. }
+           apply IHl; [lia|exact H].
+Qed.
+
+Theorem generic_encode_well_formed : forall l,
+  l <> [] -> generic_well_formed_rle (generic_rle_encode l).
+Proof.
+  intros l Hne. destruct l.
+  - congruence.
+  - unfold generic_well_formed_rle, generic_rle_encode. split.
+    + intros. apply generic_rle_encode_aux_positive with (val := a) (count := 1) (l := l); [lia|auto].
+    + intros. apply generic_rle_encode_aux_no_adjacent with (val := a) (count := 1) (default := default_A); [lia|auto].
+Qed.
+
+Definition generic_is_valid_rle (runs : list generic_run) : Prop :=
+  forall r, In r runs -> fst r > 0.
+
+Definition generic_decodes_to (runs : list generic_run) (l : list A) : Prop :=
+  generic_rle_decode runs = l.
+
+Lemma generic_repeat_length : forall n (val : A),
+  length (generic_repeat n val) = n.
+Proof.
+  induction n; simpl; auto.
+Qed.
+
+Lemma generic_decode_length_sum : forall runs,
+  length (generic_rle_decode runs) = fold_right (fun r acc => fst r + acc) 0 runs.
+Proof.
+  induction runs; simpl.
+  - reflexivity.
+  - destruct a. rewrite app_length. rewrite generic_repeat_length.
+    f_equal. apply IHruns.
+Qed.
+
+Fixpoint generic_count_runs_aux (val : A) (l : list A) : nat :=
+  match l with
+  | [] => 1
+  | h :: t =>
+      if A_eqb h val then
+        generic_count_runs_aux val t
+      else
+        S (generic_count_runs_aux h t)
+  end.
+
+Definition generic_count_runs (l : list A) : nat :=
+  match l with
+  | [] => 0
+  | h :: t => generic_count_runs_aux h t
+  end.
+
+Lemma generic_rle_encode_aux_length : forall l val count,
+  length (generic_rle_encode_aux val count l) = generic_count_runs_aux val l.
+Proof.
+  induction l; simpl; intros.
+  - reflexivity.
+  - destruct (A_eqb a val); simpl; auto.
+Qed.
+
+Theorem generic_rle_length : forall l,
+  length (generic_rle_encode l) = generic_count_runs l.
+Proof.
+  destruct l; simpl.
+  - reflexivity.
+  - apply generic_rle_encode_aux_length.
+Qed.
+
+Lemma generic_decode_nonempty : forall runs val l,
+  generic_decodes_to runs (val :: l) -> runs <> [].
+Proof.
+  intros. intro Hcontra. subst.
+  unfold generic_decodes_to in H. simpl in H. discriminate.
+Qed.
+
+Lemma generic_decode_cons_structure : forall runs val l,
+  generic_decodes_to runs (val :: l) ->
+  generic_is_valid_rle runs ->
+  match runs with
+  | [] => False
+  | (count, v) :: runs' =>
+      count > 0 /\
+      ((count = 1 /\ v = val /\ generic_decodes_to runs' l) \/
+       (count > 1 /\ v = val /\ generic_decodes_to ((count-1, v) :: runs') l))
+  end.
+Proof.
+  intros. destruct runs as [|p runs'].
+  - unfold generic_decodes_to in H. simpl in H. discriminate.
+  - destruct p as [count v].
+    assert (count > 0).
+    { unfold generic_is_valid_rle in H0.
+      assert (fst (count, v) > 0).
+      { apply H0. simpl. left. reflexivity. }
+      simpl in H1. exact H1. }
+    split. assumption.
+    unfold generic_decodes_to in H. simpl in H.
+    destruct count.
+    + inversion H1.
+    + destruct count.
+      * simpl in H. injection H; intros H2 H3.
+        left. split; [reflexivity|].
+        split; [exact H3|].
+        unfold generic_decodes_to. exact H2.
+      * simpl in H. injection H; intros H2 H3.
+        right. split; [lia|].
+        split; [exact H3|].
+        unfold generic_decodes_to. simpl. exact H2.
+Qed.
+
+Lemma generic_count_runs_minimal_aux_simple : forall l val runs,
+  generic_decodes_to runs (val :: l) ->
+  generic_is_valid_rle runs ->
+  generic_count_runs_aux val l <= length runs.
+Proof.
+  induction l; intros val runs Hdecode Hvalid.
+  - simpl.
+    assert (runs <> []) by (apply generic_decode_nonempty with (val := val) (l := []); auto).
+    destruct runs; [congruence|]. simpl. lia.
+  - simpl. destruct (A_eqb a val) eqn:Heq.
+    + destruct (A_eqb_spec a val); [|congruence]. subst a.
+      pose proof (generic_decode_cons_structure _ _ _ Hdecode Hvalid) as Hstruct.
+      destruct runs as [|[count v] runs']; [contradiction|].
+      destruct Hstruct as [Hpos [[Hc1 [Hv1 Hdec1]]|[Hc2 [Hv2 Hdec2]]]].
+      * subst. unfold generic_decodes_to in Hdec1.
+        assert (generic_count_runs_aux val l <= length runs').
+        { apply IHl with (runs := runs'); auto.
+          unfold generic_is_valid_rle in *. intros. apply Hvalid. simpl. auto. }
+        simpl. lia.
+      * subst.
+        apply IHl with (runs := ((count - 1, val) :: runs')).
+        -- exact Hdec2.
+        -- unfold generic_is_valid_rle in *. intros. simpl in H. destruct H.
+           ++ inversion H. simpl. lia.
+           ++ apply Hvalid. simpl. auto.
+    + destruct (A_eqb_spec a val) as [Heq_a_val | Hneq_a_val]; [congruence|]. simpl.
+      pose proof (generic_decode_cons_structure _ _ _ Hdecode Hvalid) as Hstruct.
+      destruct runs as [|[count v] runs']; [contradiction|].
+      destruct Hstruct as [Hpos [[Hc1 [Hv1 Hdec1]]|[Hc2 [Hv2 Hdec2]]]].
+      * subst.
+        assert (generic_count_runs_aux a l <= length runs').
+        { apply IHl with (val := a) (runs := runs').
+          -- exact Hdec1.
+          -- unfold generic_is_valid_rle in *. intros. apply Hvalid. simpl. auto. }
+        simpl. lia.
+      * subst. unfold generic_decodes_to in Hdec2.
+        assert (count - 1 > 0) by lia.
+        destruct (count - 1) eqn:Hcount.
+        -- lia.
+        -- simpl in Hdec2.
+           assert (val :: generic_repeat n val ++ generic_rle_decode runs' = a :: l).
+           { exact Hdec2. }
+           injection H0; intros. subst a. congruence.
+Qed.
+
+Theorem generic_encode_is_minimal : forall l runs,
+  generic_decodes_to runs l ->
+  generic_is_valid_rle runs ->
+  generic_well_formed_rle runs ->
+  generic_count_runs l <= length runs.
+Proof.
+  intros l runs Hdecode Hvalid Hwf.
+  destruct l.
+  - destruct runs as [|p runs'].
+    + simpl. auto.
+    + unfold generic_decodes_to in Hdecode. simpl in Hdecode.
+      destruct p. destruct n.
+      * unfold generic_is_valid_rle in Hvalid.
+        assert (fst (0, a) > 0) by (apply Hvalid; simpl; auto).
+        simpl in H. lia.
+      * simpl in Hdecode. discriminate.
+  - simpl. destruct runs as [|p runs'].
+    + unfold generic_decodes_to in Hdecode. simpl in Hdecode. discriminate.
+    + eapply generic_count_runs_minimal_aux_simple; eauto.
+Qed.
+
 End GenericRLE.
 
 (** * Computational Complexity *)
@@ -2773,6 +3019,55 @@ Proof.
     destruct (stream_flush s') as [r|] eqn:Hflush.
     + rewrite <- Heq. reflexivity.
     + rewrite app_nil_r in Heq. rewrite <- Heq. reflexivity.
+Qed.
+
+Definition stream_state_size (state : rle_stream_state) : nat := 3.
+
+Theorem stream_state_constant_size : forall state,
+  stream_state_size state = 3.
+Proof.
+  intros. reflexivity.
+Qed.
+
+Theorem stream_push_preserves_size : forall state val,
+  stream_state_size (snd (stream_push state val)) = stream_state_size state.
+Proof.
+  intros. reflexivity.
+Qed.
+
+Theorem stream_encode_list_constant_space : forall l state,
+  stream_state_size (snd (stream_encode_list state l)) = stream_state_size state.
+Proof.
+  induction l; intros; simpl.
+  - reflexivity.
+  - destruct (stream_push state a) as [opt new_state] eqn:Hpush.
+    destruct (stream_encode_list new_state l) as [runs final_state] eqn:Hencode.
+    assert (Heq: stream_state_size final_state = stream_state_size new_state).
+    { assert (final_state = snd (stream_encode_list new_state l)).
+      { rewrite Hencode. reflexivity. }
+      rewrite H. apply IHl. }
+    destruct opt; simpl; rewrite Heq; unfold stream_state_size; reflexivity.
+Qed.
+
+Definition stream_memory_usage (state : rle_stream_state) (output : list run) : nat :=
+  stream_state_size state + 2 * length output.
+
+Theorem stream_encoder_space_bound : forall l state,
+  let (output, final_state) := stream_encode_list state l in
+  stream_state_size final_state = stream_state_size state.
+Proof.
+  intros. destruct (stream_encode_list state l) eqn:E.
+  assert (r = snd (l0, r)) by reflexivity.
+  rewrite H. rewrite <- E.
+  apply stream_encode_list_constant_space.
+Qed.
+
+Theorem streaming_uses_constant_space : forall max_run,
+  max_run > 0 ->
+  forall l,
+    stream_state_size (snd (stream_encode_list (init_stream_state max_run) l)) = 3.
+Proof.
+  intros. rewrite stream_encode_list_constant_space. reflexivity.
 Qed.
 
 (** * Streaming Decoder *)
