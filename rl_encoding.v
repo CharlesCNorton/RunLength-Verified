@@ -1706,8 +1706,11 @@ Definition rle_encode_maxrun (max_run : nat) (l : list nat) : list run :=
   | h :: t => rle_encode_aux_maxrun max_run h 1 t
   end.
 
-Definition rle_encode_byte := rle_encode_maxrun 255.
-Definition rle_encode_7bit := rle_encode_maxrun 127.
+Definition byte_limit : nat := 255.
+Definition seven_bit_limit : nat := 127.
+
+Definition rle_encode_byte := rle_encode_maxrun byte_limit.
+Definition rle_encode_7bit := rle_encode_maxrun seven_bit_limit.
 
 Lemma rle_encode_aux_maxrun_nil : forall max_run val count,
   rle_encode_aux_maxrun max_run val count [] = [(count, val)].
@@ -2772,6 +2775,8 @@ Extract Constant max_int_runtime => "Stdlib.max_int".
 Extract Constant max_int_8 => "255".
 Extract Constant max_int_16 => "65535".
 Extract Constant max_int_32 => "4294967295".
+Extract Constant byte_limit => "255".
+Extract Constant seven_bit_limit => "127".
 
 Extraction Inline pred.
 
@@ -2781,6 +2786,7 @@ Extraction "rle_encoding.ml"
   rle_encode rle_decode repeat count_runs
   rle_encode_validated rle_decode_validated
   rle_encode_maxrun rle_encode_aux_maxrun
+  byte_limit seven_bit_limit
   rle_encode_byte rle_encode_7bit
   init_stream_state stream_push stream_flush stream_encode_list
   rle_encode_u8 rle_encode_u16 rle_encode_u32
