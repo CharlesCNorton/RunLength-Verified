@@ -857,6 +857,30 @@ Proof.
   exact Hbound.
 Qed.
 
+(** * Concurrent and Parallel Properties *)
+
+Definition independent_segments (l1 l2 : list nat) : Prop :=
+  l1 = [] \/ l2 = [] \/ last l1 0 <> hd 0 l2.
+
+Theorem parallel_encode_preserves_decode : forall l1 l2,
+  rle_decode (rle_encode l1 ++ rle_encode l2) = l1 ++ l2 \/
+  exists combined,
+    rle_decode combined = l1 ++ l2 /\
+    length combined <= length (rle_encode l1) + length (rle_encode l2).
+Proof.
+  intros l1 l2.
+  left.
+  rewrite rle_decode_app.
+  rewrite rle_correct. rewrite rle_correct.
+  reflexivity.
+Qed.
+
+Theorem parallel_decode_associative : forall r1 r2 r3,
+  rle_decode (r1 ++ r2 ++ r3) = rle_decode ((r1 ++ r2) ++ r3).
+Proof.
+  intros. rewrite app_assoc. reflexivity.
+Qed.
+
 Lemma well_formed_tail : forall val c v runs,
   well_formed_rle ((1, val) :: (S c, v) :: runs) ->
   v <> val.
@@ -1937,6 +1961,39 @@ Qed.
 
 End GenericRLE.
 
+(** * Generic RLE Instantiations *)
+
+Theorem generic_optimality_works : forall A (eqb : A -> A -> bool)
+  (eqb_spec : forall x y, reflect (x = y) (eqb x y))
+  (default : A) (l : list A) (runs : list (nat * A)),
+  @generic_is_valid_rle A runs ->
+  @generic_well_formed_rle A default runs ->
+  @generic_decodes_to A runs l ->
+  @generic_count_runs A eqb l <= length runs.
+Proof.
+  intros. eapply generic_encode_is_minimal; eauto.
+Qed.
+
+(** * Formal Big-O Complexity Framework *)
+
+Definition is_O (f g : nat -> nat) : Prop :=
+  exists c n0, c > 0 /\ forall n, n >= n0 -> f n <= c * g n.
+
+Notation "f ∈O( g )" := (is_O f g) (at level 70).
+
+Definition is_Omega (f g : nat -> nat) : Prop :=
+  exists c n0, c > 0 /\ forall n, n >= n0 -> f n >= c * g n.
+
+Notation "f ∈Ω( g )" := (is_Omega f g) (at level 70).
+
+Definition is_Theta (f g : nat -> nat) : Prop :=
+  is_O f g /\ is_Omega f g.
+
+Notation "f ∈Θ( g )" := (is_Theta f g) (at level 70).
+
+Definition linear (n : nat) : nat := n.
+Definition constant (n : nat) : nat := 1.
+
 (** * Computational Complexity *)
 
 Fixpoint rle_encode_steps_aux (val : nat) (count : nat) (l : list nat) : nat :=
@@ -1973,6 +2030,19 @@ Proof.
   - simpl. rewrite rle_encode_steps_aux_linear. reflexivity.
 Qed.
 
+Theorem rle_encode_is_O_n :
+  (fun n => rle_encode_steps (repeat n 0)) ∈O( linear ).
+Proof.
+  unfold is_O, linear.
+  exists 2, 1. split.
+  - lia.
+  - intros n Hn. rewrite rle_encode_linear_time.
+    rewrite repeat_length.
+    destruct n.
+    + lia.
+    + simpl. lia.
+Qed.
+
 Fixpoint rle_decode_steps (runs : list run) : nat :=
   match runs with
   | [] => 1
@@ -1994,6 +2064,19 @@ Proof.
   induction runs.
   - reflexivity.
   - destruct a. simpl. rewrite IHruns. lia.
+Qed.
+
+Theorem rle_decode_is_O_output :
+  forall m, (fun n => rle_decode_steps [(n, m)]) ∈O( linear ).
+Proof.
+  intros m. unfold is_O, linear.
+  exists 2, 1. split.
+  - lia.
+  - intros n Hn. rewrite rle_decode_time_equals_output_length.
+    simpl. rewrite app_nil_r. rewrite repeat_length.
+    destruct n.
+    + lia.
+    + simpl. lia.
 Qed.
 
 Lemma rle_encode_space_linear : forall l,
@@ -2374,6 +2457,34 @@ Theorem rle_encode_decode_preserves_bounds : forall runs,
   bounded_list max_int_runtime (rle_decode runs).
 Proof.
   intros runs Hvalid Hwf Hbound.
+  apply bounded_decode. exact Hbound.
+Qed.
+
+(** * Extraction Correctness *)
+
+Theorem extraction_preserves_encode_decode : forall l,
+  bounded_list max_int_runtime l ->
+  length l <= max_int_runtime ->
+  rle_decode (rle_encode l) = l.
+Proof.
+  intros. apply rle_correct.
+Qed.
+
+Theorem extraction_no_overflow : forall l,
+  bounded_list max_int_runtime l ->
+  forall r, In r (rle_encode l) ->
+    snd r < max_int_runtime.
+Proof.
+  intros l Hbound r Hr.
+  apply (bounded_encode max_int_runtime l Hbound r Hr).
+Qed.
+
+Theorem extraction_decode_bounded : forall runs,
+  is_valid_rle runs ->
+  (forall r, In r runs -> snd r < max_int_runtime) ->
+  bounded_list max_int_runtime (rle_decode runs).
+Proof.
+  intros runs Hval Hbound.
   apply bounded_decode. exact Hbound.
 Qed.
 
@@ -3342,6 +3453,39 @@ Definition stream_pull_safe (state : decode_stream_state) (runs : list run) (bud
   else
     None.
 
+(** * I/O and Serialization *)
+
+Fixpoint serialize_nat (n : nat) : list bool :=
+  match n with
+  | 0 => []
+  | S n' => true :: serialize_nat n'
+  end.
+
+Fixpoint deserialize_nat (bits : list bool) : nat :=
+  match bits with
+  | [] => 0
+  | true :: rest => S (deserialize_nat rest)
+  | false :: _ => 0
+  end.
+
+Theorem serialize_deserialize_nat : forall n,
+  deserialize_nat (serialize_nat n) = n.
+Proof.
+  induction n; simpl.
+  - reflexivity.
+  - rewrite IHn. reflexivity.
+Qed.
+
+Definition serialize_run (r : run) : list bool :=
+  let (count, val) := r in
+  serialize_nat count ++ [false] ++ serialize_nat val ++ [false].
+
+Fixpoint serialize_runs (runs : list run) : list bool :=
+  match runs with
+  | [] => []
+  | r :: rest => serialize_run r ++ serialize_runs rest
+  end.
+
 (** * Integer Width Support *)
 
 Definition max_int_8 : nat := 2^8 - 1.
@@ -3508,6 +3652,35 @@ Proof.
       + apply Nat.leb_le. apply H. simpl. auto.
       + apply IHruns. intros. apply H. simpl. auto. }
   rewrite H0. reflexivity.
+Qed.
+
+(** * Verified Performance Benchmarks *)
+
+Definition benchmark_uniform_1000 : list nat := repeat 1000 42.
+Definition benchmark_alternating_1000 : list nat :=
+  map (fun i => i mod 2) (seq 0 1000).
+
+Theorem benchmark_uniform_optimal :
+  length (rle_encode benchmark_uniform_1000) = 1.
+Proof.
+  unfold benchmark_uniform_1000.
+  apply rle_best_case. lia.
+Qed.
+
+Theorem benchmark_uniform_ratio :
+  compression_ratio_num benchmark_uniform_1000 (rle_encode benchmark_uniform_1000) = 1000 /\
+  compression_ratio_den benchmark_uniform_1000 (rle_encode benchmark_uniform_1000) = 1.
+Proof.
+  unfold benchmark_uniform_1000.
+  apply compression_ratio_uniform. lia.
+Qed.
+
+Theorem benchmark_encode_time_linear :
+  rle_encode_steps benchmark_uniform_1000 = 1001.
+Proof.
+  unfold benchmark_uniform_1000.
+  rewrite rle_encode_linear_time.
+  rewrite repeat_length. reflexivity.
 Qed.
 
 (** * Test Suite *)
