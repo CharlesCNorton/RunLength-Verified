@@ -55,12 +55,14 @@ Fixpoint rle_decode (runs : list run) : list nat :=
 
 (** * Basic Properties *)
 
+(** The length of a repeated list equals the repetition count. *)
 Lemma repeat_length : forall n val,
   length (repeat n val) = n.
 Proof.
   induction n; simpl; auto.
 Qed.
 
+(** Repeating [n + m] times is equivalent to concatenating [repeat n] and [repeat m]. *)
 Lemma repeat_app : forall n m val,
   repeat (n + m) val = repeat n val ++ repeat m val.
 Proof.
@@ -69,6 +71,7 @@ Proof.
   - f_equal. apply IHn.
 Qed.
 
+(** All elements in a repeated list are equal to the repeated value. *)
 Lemma repeat_In : forall n val x,
   In x (repeat n val) -> x = val.
 Proof.
@@ -77,6 +80,7 @@ Proof.
   - destruct H; auto.
 Qed.
 
+(** A repeated list with positive count is nonempty. *)
 Lemma repeat_not_nil : forall n val,
   n > 0 -> repeat n val <> [].
 Proof.
@@ -85,12 +89,14 @@ Proof.
   - discriminate.
 Qed.
 
+(** The successor case of [repeat] unfolds to a cons cell. *)
 Lemma repeat_S : forall n val,
   repeat (S n) val = val :: repeat n val.
 Proof.
   reflexivity.
 Qed.
 
+(** Appending a value to a repeated list extends the repetition count. *)
 Lemma repeat_cons_app : forall n val l,
   repeat n val ++ (val :: l) = repeat (S n) val ++ l.
 Proof.
@@ -101,6 +107,8 @@ Qed.
 
 (** * Core Correctness *)
 
+(** Decoding the auxiliary encoder's output, with an accumulator appended,
+    equals the repeated prefix followed by the list and accumulator. *)
 Lemma rle_encode_aux_decode : forall l val count acc,
   rle_decode (rle_encode_aux val count l) ++ acc =
   repeat count val ++ l ++ acc.
@@ -113,6 +121,7 @@ Proof.
     + simpl. rewrite <- app_assoc. f_equal. apply IHl.
 Qed.
 
+(** Decoding the encoding of any list recovers the original list. *)
 Theorem rle_correct : forall l : list nat,
   rle_decode (rle_encode l) = l.
 Proof.
@@ -133,6 +142,7 @@ Definition well_formed_rle (runs : list run) : Prop :=
   (forall i, i < pred (length runs) ->
              snd (nth i runs (0,0)) <> snd (nth (S i) runs (0,0))).
 
+(** All runs produced by the auxiliary encoder have positive counts. *)
 Lemma rle_encode_aux_positive : forall l val count,
   count > 0 ->
   forall r, In r (rle_encode_aux val count l) -> fst r > 0.
@@ -146,11 +156,13 @@ Proof.
       * apply IHl with (val := a) (count := 1); [lia|auto].
 Qed.
 
+(** Symmetric inequality for natural numbers. *)
 Lemma neq_sym : forall (a b : nat), a <> b -> b <> a.
 Proof.
   intros a b H. intro H1. apply H. symmetry. exact H1.
 Qed.
 
+(** The auxiliary encoder applied to the empty list produces no adjacent equal values. *)
 Lemma rle_encode_aux_no_adjacent_nil : forall val count i,
   count > 0 ->
   i < pred (length (rle_encode_aux val count [])) ->
@@ -160,6 +172,7 @@ Proof.
   intros. simpl in *. lia.
 Qed.
 
+(** Incrementing the count preserves the no-adjacent-duplicates property. *)
 Lemma rle_encode_aux_no_adjacent_same : forall l val count i,
   count > 0 ->
   i < pred (length (rle_encode_aux val (S count) l)) ->
@@ -172,6 +185,7 @@ Proof.
   intros. simpl. rewrite Nat.eqb_refl. exact H1.
 Qed.
 
+(** Inequality is symmetric when the first element differs from the accumulator value. *)
 Lemma rle_encode_aux_no_adjacent_diff_first : forall (a val count : nat),
   count > 0 ->
   a <> val ->
@@ -180,6 +194,7 @@ Proof.
   intros. apply neq_sym. exact H0.
 Qed.
 
+(** The first run produced by the auxiliary encoder has the accumulator value as its second component. *)
 Lemma rle_encode_aux_first_snd_general : forall a count l,
   count > 0 ->
   snd (nth 0 (rle_encode_aux a count l) (0,0)) = a.
@@ -193,6 +208,7 @@ Proof.
     + simpl. reflexivity.
 Qed.
 
+(** No two adjacent runs in the auxiliary encoder's output have equal values. *)
 Lemma rle_encode_aux_no_adjacent : forall l val count,
   count > 0 ->
   forall i, i < pred (length (rle_encode_aux val count l)) ->
@@ -219,6 +235,7 @@ Proof.
         apply IHl; [lia|exact H].
 Qed.
 
+(** The encoder produces well-formed run-length encodings for nonempty lists. *)
 Theorem encode_well_formed : forall l,
   l <> [] -> well_formed_rle (rle_encode l).
 Proof.
@@ -231,6 +248,7 @@ Qed.
 
 (** * Injectivity *)
 
+(** Decoding distributes over concatenation of run lists. *)
 Lemma rle_decode_app : forall r1 r2,
   rle_decode (r1 ++ r2) = rle_decode r1 ++ rle_decode r2.
 Proof.
@@ -239,6 +257,7 @@ Proof.
   - destruct a. rewrite IHr1. rewrite app_assoc. reflexivity.
 Qed.
 
+(** The encoder is injective: distinct lists produce distinct encodings. *)
 Theorem rle_injective : forall l1 l2,
   rle_encode l1 = rle_encode l2 -> l1 = l2.
 Proof.
@@ -264,6 +283,7 @@ Definition count_runs (l : list nat) : nat :=
   | h :: t => count_runs_aux h t
   end.
 
+(** The length of the auxiliary encoder's output equals the run count. *)
 Lemma rle_encode_aux_length : forall l val count,
   length (rle_encode_aux val count l) = count_runs_aux val l.
 Proof.
@@ -272,6 +292,7 @@ Proof.
   - destruct (Nat.eqb a val); simpl; auto.
 Qed.
 
+(** The length of the encoding equals the number of runs in the input. *)
 Theorem rle_length : forall l,
   length (rle_encode l) = count_runs l.
 Proof.
@@ -280,6 +301,7 @@ Proof.
   - apply rle_encode_aux_length.
 Qed.
 
+(** The auxiliary run counter is bounded by one plus the list length. *)
 Lemma count_runs_aux_le : forall l val,
   count_runs_aux val l <= S (length l).
 Proof.
@@ -290,6 +312,7 @@ Proof.
     + simpl. apply le_n_S. apply IHl.
 Qed.
 
+(** In the worst case, the encoding is no longer than the original list. *)
 Theorem rle_worst_case : forall l,
   length (rle_encode l) <= length l.
 Proof.
@@ -298,6 +321,7 @@ Proof.
   - apply count_runs_aux_le.
 Qed.
 
+(** In the best case, a uniform list compresses to a single run. *)
 Theorem rle_best_case : forall n val,
   n > 0 -> length (rle_encode (repeat n val)) = 1.
 Proof.
@@ -315,6 +339,7 @@ Definition compression_ratio_num (original : list nat) (encoded : list run) : na
 Definition compression_ratio_den (original : list nat) (encoded : list run) : nat :=
   length encoded.
 
+(** For uniform lists, the compression ratio is [n:1]. *)
 Theorem compression_ratio_uniform : forall n val,
   n > 0 ->
   compression_ratio_num (repeat n val) (rle_encode (repeat n val)) = n /\
@@ -328,6 +353,7 @@ Qed.
 Definition worst_case_list (n : nat) : list nat :=
   map (fun i => i mod 2) (seq 0 n).
 
+(** The length of the worst-case alternating list equals [n]. *)
 Lemma worst_case_list_length : forall n,
   length (worst_case_list n) = n.
 Proof.
@@ -335,6 +361,7 @@ Proof.
   rewrite map_length. apply seq_length.
 Qed.
 
+(** When all adjacent elements differ, the encoding length equals the input length. *)
 Lemma no_compression_worst : forall l,
   (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
   length (rle_encode l) = length l.
@@ -354,6 +381,7 @@ Proof.
       specialize (H (S i) H1). simpl in H. exact H.
 Qed.
 
+(** Lists with no adjacent equal elements achieve no compression. *)
 Theorem compression_ratio_no_benefit : forall l,
   (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
   compression_ratio_num l (rle_encode l) = length l /\
@@ -364,6 +392,7 @@ Proof.
   - unfold compression_ratio_den. apply no_compression_worst. exact H.
 Qed.
 
+(** Repeated lists of length at least two benefit from compression. *)
 Theorem rle_beneficial : forall n val,
   count_runs (repeat (S (S n)) val) <= S n.
 Proof.
@@ -374,6 +403,7 @@ Proof.
   - rewrite Nat.eqb_refl. lia.
 Qed.
 
+(** For lists with length greater than one, compression reduces size. *)
 Corollary compression_achievable : forall n val,
   n > 1 ->
   length (rle_encode (repeat n val)) < length (repeat n val).
@@ -391,6 +421,7 @@ Definition is_valid_rle (runs : list run) : Prop :=
 Definition decodes_to (runs : list run) (l : list nat) : Prop :=
   rle_decode runs = l.
 
+(** For valid run lists, the length of each repeated segment equals the run count. *)
 Lemma valid_rle_decode_length : forall runs,
   is_valid_rle runs ->
   forall r, In r runs -> length (repeat (fst r) (snd r)) = fst r.
@@ -398,6 +429,7 @@ Proof.
   intros. apply repeat_length.
 Qed.
 
+(** The decoded length equals the sum of run counts. *)
 Lemma decode_length_sum : forall runs,
   length (rle_decode runs) = fold_right (fun r acc => fst r + acc) 0 runs.
 Proof.
@@ -407,6 +439,7 @@ Proof.
     f_equal. apply IHruns.
 Qed.
 
+(** The predecessor of the length of a nonempty cons list follows a pattern. *)
 Lemma pred_length_cons : forall {A} (a : A) (l : list A),
   l <> [] -> pred (length (a :: l)) = S (pred (length l)).
 Proof.
@@ -415,6 +448,7 @@ Proof.
   - simpl. reflexivity.
 Qed.
 
+(** If an encoding decodes to a nonempty list, the encoding itself is nonempty. *)
 Lemma decode_nonempty : forall runs val l,
   decodes_to runs (val :: l) -> runs <> [].
 Proof.
@@ -422,6 +456,7 @@ Proof.
   unfold decodes_to in H. simpl in H. discriminate.
 Qed.
 
+(** For valid nonempty run lists, the first run has positive count. *)
 Lemma valid_rle_positive_first : forall runs,
   is_valid_rle runs -> runs <> [] ->
   fst (hd (0,0) runs) > 0.
@@ -432,6 +467,7 @@ Proof.
     apply H. simpl. auto.
 Qed.
 
+(** The no-adjacent-duplicates property of a cons list holds for its tail. *)
 Lemma no_adjacent_tail : forall r runs i,
   (forall j, j < pred (length (r :: runs)) ->
              snd (nth j (r :: runs) (0,0)) <> snd (nth (S j) (r :: runs) (0,0))) ->
@@ -446,6 +482,7 @@ Proof.
   specialize (H (S i) H1). simpl in H. exact H.
 Qed.
 
+(** An encoding that decodes to a cons list has a structured first run. *)
 Lemma decode_cons_structure : forall runs val l,
   decodes_to runs (val :: l) ->
   is_valid_rle runs ->
@@ -480,6 +517,7 @@ Proof.
         unfold decodes_to. simpl. exact H2.
 Qed.
 
+(** An encoding that decodes to a singleton list has at least one run. *)
 Lemma count_runs_base_case : forall val runs,
   decodes_to runs [val] ->
   is_valid_rle runs ->
@@ -491,6 +529,7 @@ Proof.
   destruct runs; [congruence|]. simpl. lia.
 Qed.
 
+(** Decoding two consecutive identical values admits a shorter encoding. *)
 Lemma decode_same_value_continuation : forall runs val l,
   decodes_to runs (val :: val :: l) ->
   is_valid_rle runs ->
@@ -529,6 +568,7 @@ Proof.
     + simpl. lia.
 Qed.
 
+(** The auxiliary run counter is bounded by the encoding length. *)
 Lemma count_runs_minimal_aux_simple : forall l val runs,
   decodes_to runs (val :: l) ->
   is_valid_rle runs ->
@@ -540,38 +580,32 @@ Proof.
     destruct runs; [congruence|]. simpl. lia.
   - simpl. destruct (Nat.eqb a val) eqn:Heq.
     + apply Nat.eqb_eq in Heq. subst a.
-      (* When next element is val, we continue the same run *)
       pose proof (decode_cons_structure _ _ _ Hdecode Hvalid) as Hstruct.
       destruct runs as [|[count v] runs']; [contradiction|].
       destruct Hstruct as [Hpos [[Hc1 [Hv1 Hdec1]]|[Hc2 [Hv2 Hdec2]]]].
-      * (* count = 1 *)
-        subst. unfold decodes_to in Hdec1.
+      * subst. unfold decodes_to in Hdec1.
         assert (count_runs_aux val l <= length runs').
         { apply IHl with (runs := runs'); auto.
           unfold is_valid_rle in *. intros. apply Hvalid. simpl. auto. }
         simpl. lia.
-      * (* count > 1 *)
-        subst.
+      * subst.
         apply IHl with (runs := ((count - 1, val) :: runs')).
         -- exact Hdec2.
         -- unfold is_valid_rle in *. intros. simpl in H. destruct H.
            ++ inversion H. simpl. lia.
            ++ apply Hvalid. simpl. auto.
     + apply Nat.eqb_neq in Heq.
-      (* When a ≠ val, we start a new run with value a *)
       simpl.
       pose proof (decode_cons_structure _ _ _ Hdecode Hvalid) as Hstruct.
       destruct runs as [|[count v] runs']; [contradiction|].
       destruct Hstruct as [Hpos [[Hc1 [Hv1 Hdec1]]|[Hc2 [Hv2 Hdec2]]]].
-      * (* count = 1 *)
-        subst.
+      * subst.
         assert (count_runs_aux a l <= length runs').
         { apply IHl with (val := a) (runs := runs').
           -- exact Hdec1.
           -- unfold is_valid_rle in *. intros. apply Hvalid. simpl. auto. }
         simpl. lia.
-      * (* count > 1 *)
-        subst. unfold decodes_to in Hdec2.
+      * subst. unfold decodes_to in Hdec2.
         assert (count - 1 > 0) by lia.
         destruct (count - 1) eqn:Hcount.
         -- lia.
@@ -581,6 +615,7 @@ Proof.
            injection H0; intros. subst a. congruence.
 Qed.
 
+(** The auxiliary run counter is bounded by the encoding length with well-formedness. *)
 Lemma count_runs_minimal_aux : forall l val runs,
   decodes_to runs (val :: l) ->
   is_valid_rle runs ->
@@ -592,6 +627,7 @@ Proof.
   intros. apply count_runs_minimal_aux_simple; auto.
 Qed.
 
+(** The encoder produces encodings of minimal length among all valid well-formed encodings. *)
 Theorem encode_is_minimal : forall l runs,
   decodes_to runs l ->
   is_valid_rle runs ->
@@ -656,6 +692,7 @@ Fixpoint decompose_runs_aux (fuel : nat) (l : list nat) : list (list nat) :=
 Definition decompose_runs (l : list nat) : list (list nat) :=
   decompose_runs_aux (length l) l.
 
+(** Splitting a run produces a decomposition whose concatenation equals the original. *)
 Lemma split_run_app : forall val l,
   let (run, rest) := split_run val l in
   val :: l = run ++ rest.
@@ -677,6 +714,7 @@ Fixpoint flatten_runs (runs : list (list nat)) : list nat :=
   | h :: t => h ++ flatten_runs t
   end.
 
+(** Flattening the decomposed runs with sufficient fuel recovers the original list. *)
 Lemma decompose_runs_aux_correct : forall fuel l,
   fuel >= length l ->
   flatten_runs (decompose_runs_aux fuel l) = l.
@@ -707,6 +745,7 @@ Proof.
       -- simpl in Hfuel. lia.
 Qed.
 
+(** Decomposing then flattening recovers the original list. *)
 Theorem decompose_flatten : forall l,
   flatten_runs (decompose_runs l) = l.
 Proof.
@@ -716,6 +755,7 @@ Qed.
 
 (** * Composition Properties *)
 
+(** Decoding the concatenation of two well-formed run lists distributes over append. *)
 Theorem rle_decode_app_safe : forall runs1 runs2,
   is_valid_rle runs1 ->
   is_valid_rle runs2 ->
@@ -728,6 +768,7 @@ Proof.
   apply rle_decode_app.
 Qed.
 
+(** The run count of concatenated lists is bounded by the sum of individual run counts. *)
 Lemma count_runs_app_le : forall l1 l2,
   count_runs (l1 ++ l2) <= count_runs l1 + count_runs l2.
 Proof.
@@ -752,6 +793,7 @@ Proof.
       exact H.
 Qed.
 
+(** Parallel encoding of two lists with distinct boundary values produces a bounded encoding. *)
 Theorem parallel_encode_safe : forall l1 l2,
   l1 <> [] ->
   l2 <> [] ->
@@ -768,6 +810,7 @@ Proof.
     apply count_runs_app_le.
 Qed.
 
+(** Appending well-formed run lists preserves decoding distributivity. *)
 Theorem streaming_safe_append : forall runs1 runs2 l1 l2,
   rle_decode runs1 = l1 ->
   rle_decode runs2 = l2 ->
@@ -780,6 +823,7 @@ Proof.
   rewrite rle_decode_app. rewrite H1. rewrite H2. reflexivity.
 Qed.
 
+(** The auxiliary encoder never produces an empty list. *)
 Lemma rle_encode_aux_not_nil : forall l val count,
   rle_encode_aux val count l <> [].
 Proof.
@@ -789,6 +833,7 @@ Proof.
   - discriminate.
 Qed.
 
+(** The last value in the auxiliary encoder's output equals the last element of the input. *)
 Lemma rle_encode_aux_last_snd : forall l val count,
   count > 0 ->
   l <> [] ->
@@ -816,6 +861,7 @@ Proof.
         simpl. exact Henc_last.
 Qed.
 
+(** The last value in the encoding equals the last element of the input list. *)
 Lemma rle_encode_last_snd : forall l,
   l <> [] ->
   snd (last (rle_encode l) (0,0)) = last l 0.
@@ -830,6 +876,7 @@ Proof.
     + simpl. destruct t'; reflexivity.
 Qed.
 
+(** The first value in the encoding equals the first element of the input list. *)
 Lemma rle_encode_hd_snd : forall l,
   l <> [] ->
   snd (hd (0,0) (rle_encode l)) = hd 0 l.
@@ -845,6 +892,7 @@ Proof.
   apply rle_encode_aux_first_snd_general. lia.
 Qed.
 
+(** When boundary elements differ, encoded boundary values also differ. *)
 Theorem encode_safe_concat : forall l1 l2,
   l1 <> [] ->
   l2 <> [] ->
@@ -862,6 +910,7 @@ Qed.
 Definition independent_segments (l1 l2 : list nat) : Prop :=
   l1 = [] \/ l2 = [] \/ last l1 0 <> hd 0 l2.
 
+(** Parallel encoding preserves correct decoding through simple concatenation. *)
 Theorem parallel_encode_preserves_decode : forall l1 l2,
   rle_decode (rle_encode l1 ++ rle_encode l2) = l1 ++ l2 \/
   exists combined,
@@ -875,12 +924,14 @@ Proof.
   reflexivity.
 Qed.
 
+(** Decoding is associative over concatenation of run lists. *)
 Theorem parallel_decode_associative : forall r1 r2 r3,
   rle_decode (r1 ++ r2 ++ r3) = rle_decode ((r1 ++ r2) ++ r3).
 Proof.
   intros. rewrite app_assoc. reflexivity.
 Qed.
 
+(** The second run in a well-formed pair has a different value from the first. *)
 Lemma well_formed_tail : forall val c v runs,
   well_formed_rle ((1, val) :: (S c, v) :: runs) ->
   v <> val.
@@ -890,18 +941,21 @@ Proof.
   apply H in H0. simpl in H0. apply neq_sym. exact H0.
 Qed.
 
+(** The predecessor of a triple cons list length follows a simple pattern. *)
 Lemma pred_length_triple : forall {A} (a b c : A) (l : list A),
   pred (length (a :: b :: c :: l)) = S (S (length l)).
 Proof.
   intros. simpl. reflexivity.
 Qed.
 
+(** Inequality propagation through successor. *)
 Lemma lt_pred_to_succ : forall i n,
   i < S n -> S i < S (S n).
 Proof.
   intros. lia.
 Qed.
 
+(** Encoding a repeated list with an accumulator produces a single run summing the counts. *)
 Lemma rle_encode_aux_repeat_accumulator : forall val count n,
   rle_encode_aux val count (repeat n val) = [(count + n, val)].
 Proof.
@@ -911,6 +965,7 @@ Proof.
   - rewrite Nat.eqb_refl. rewrite IHn. f_equal. f_equal. lia.
 Qed.
 
+(** Encoding a repeated prefix followed by decoded runs accumulates the repeat count. *)
 Lemma rle_encode_aux_repeat_plus_decode : forall val init count runs,
   rle_encode_aux val init (repeat count val ++ rle_decode runs) =
   rle_encode_aux val (init + count) (rle_decode runs).
@@ -922,6 +977,7 @@ Proof.
   - rewrite Nat.eqb_refl. rewrite IHcount. f_equal. lia.
 Qed.
 
+(** Well-formedness is preserved when removing the first run from a pair. *)
 Lemma well_formed_skip_one : forall val c v runs,
   well_formed_rle ((1, val) :: (S c, v) :: runs) ->
   well_formed_rle ((S c, v) :: runs).
@@ -936,12 +992,14 @@ Proof.
       apply H0 in H2. simpl in H2. exact H2.
 Qed.
 
+(** Encoding the empty decoded list produces the empty encoding. *)
 Lemma rle_encode_decode_empty :
   rle_encode (rle_decode []) = [].
 Proof.
   reflexivity.
 Qed.
 
+(** Encoding a decoded single run recovers the original run. *)
 Lemma rle_encode_decode_single : forall count val,
   count > 0 ->
   rle_encode (rle_decode [(count, val)]) = [(count, val)].
@@ -953,24 +1011,28 @@ Proof.
     replace (1 + count) with (S count) by lia. reflexivity.
 Qed.
 
+(** Encoding a singleton list produces a single run with count one. *)
 Lemma rle_encode_single_value_list : forall val,
   rle_encode [val] = [(1, val)].
 Proof.
   intros. reflexivity.
 Qed.
 
+(** Decoding a single run produces a repeated list. *)
 Lemma rle_decode_single_run : forall count val,
   rle_decode [(count, val)] = repeat count val.
 Proof.
   intros. simpl. rewrite app_nil_r. reflexivity.
 Qed.
 
+(** Decoding a cons list unfolds to concatenation with repeated elements. *)
 Lemma rle_decode_cons : forall count val runs,
   rle_decode ((count, val) :: runs) = repeat count val ++ rle_decode runs.
 Proof.
   intros. reflexivity.
 Qed.
 
+(** Encoding a different value terminates the current run and starts a new one. *)
 Lemma rle_encode_aux_different_value : forall val v count l,
   v <> val ->
   rle_encode_aux val count (v :: l) = (count, val) :: rle_encode_aux v 1 l.
@@ -980,18 +1042,21 @@ Proof.
   - reflexivity.
 Qed.
 
+(** Encoding the same value continues the current run. *)
 Lemma rle_encode_aux_same_value : forall val count l,
   rle_encode_aux val count (val :: l) = rle_encode_aux val (S count) l.
 Proof.
   intros. simpl. rewrite Nat.eqb_refl. reflexivity.
 Qed.
 
+(** The auxiliary encoder applied to the empty list produces a single run. *)
 Lemma rle_encode_aux_empty : forall val count,
   rle_encode_aux val count [] = [(count, val)].
 Proof.
   intros. reflexivity.
 Qed.
 
+(** Encoding a repeated list produces a single run with the repetition count. *)
 Lemma rle_encode_repeat : forall count val,
   count > 0 ->
   rle_encode (repeat count val) = [(count, val)].
@@ -1002,6 +1067,7 @@ Proof.
     replace (1 + count) with (S count) by lia. reflexivity.
 Qed.
 
+(** A valid cons run list has a positive count and a valid tail. *)
 Lemma valid_rle_cons : forall count val runs,
   is_valid_rle ((count, val) :: runs) ->
   count > 0 /\ is_valid_rle runs.
@@ -1012,6 +1078,7 @@ Proof.
   - intros r Hr. apply H. simpl. auto.
 Qed.
 
+(** Adjacent runs in a well-formed list have different values. *)
 Lemma well_formed_cons_different : forall count val c v runs,
   well_formed_rle ((count, val) :: (c, v) :: runs) ->
   val <> v.
@@ -1021,12 +1088,14 @@ Proof.
   apply H in H0. simpl in H0. exact H0.
 Qed.
 
+(** Decoding two runs produces concatenated repeated segments. *)
 Lemma rle_decode_two_runs : forall c1 v1 c2 v2,
   rle_decode [(c1, v1); (c2, v2)] = repeat c1 v1 ++ repeat c2 v2.
 Proof.
   intros. simpl. rewrite app_nil_r. reflexivity.
 Qed.
 
+(** Encoding a single value followed by empty repeated segments produces one run. *)
 Lemma rle_encode_two_runs_case1 : forall v1 v2,
   v1 <> v2 ->
   rle_encode (v1 :: repeat 0 v1 ++ repeat 0 v2) = [(1, v1)].
@@ -1034,6 +1103,7 @@ Proof.
   intros. simpl. reflexivity.
 Qed.
 
+(** Encoding two different singleton values produces two unit runs. *)
 Lemma rle_encode_single_then_different : forall v1 v2,
   v1 <> v2 ->
   rle_encode [v1; v2] = [(1, v1); (1, v2)].
@@ -1043,6 +1113,7 @@ Proof.
   - reflexivity.
 Qed.
 
+(** Encoding a different value in the auxiliary encoder splits the run. *)
 Lemma rle_encode_aux_app_different : forall val count v l,
   v <> val ->
   rle_encode_aux val count (v :: l) = (count, val) :: rle_encode_aux v 1 l.
@@ -1050,6 +1121,7 @@ Proof.
   intros. apply rle_encode_aux_different_value. auto.
 Qed.
 
+(** Encoding repeated values followed by a different element accumulates the count. *)
 Lemma rle_encode_aux_repeat_self_app : forall v1 init n v2 l,
   rle_encode_aux v1 init (repeat n v1 ++ v2 :: l) =
   rle_encode_aux v1 (init + n) (v2 :: l).
@@ -1061,6 +1133,7 @@ Proof.
     f_equal. rewrite Nat.add_succ_r. reflexivity.
 Qed.
 
+(** Encoding concatenated repeated segments with different values produces two runs. *)
 Lemma rle_encode_repeat_app_different : forall c1 v1 c2 v2,
   c1 > 0 -> c2 > 0 -> v1 <> v2 ->
   rle_encode (repeat c1 v1 ++ repeat c2 v2) = [(c1, v1); (c2, v2)].
@@ -1075,6 +1148,7 @@ Proof.
     replace (1 + c2) with (S c2) by lia. reflexivity.
 Qed.
 
+(** Encoding a value followed by a repeated different value produces one or two runs. *)
 Lemma rle_encode_cons_repeat_different : forall val v count,
   v <> val ->
   rle_encode (val :: repeat count v) =
@@ -1088,6 +1162,7 @@ Proof.
       replace (1 + count) with (S count) by lia. reflexivity.
 Qed.
 
+(** Encoding a decoded pair of well-formed runs recovers the original pair. *)
 Lemma rle_encode_decode_two_runs : forall c1 v1 c2 v2,
   c1 > 0 -> c2 > 0 -> v1 <> v2 ->
   rle_encode (rle_decode [(c1, v1); (c2, v2)]) = [(c1, v1); (c2, v2)].
@@ -1096,6 +1171,7 @@ Proof.
   apply rle_encode_repeat_app_different; auto.
 Qed.
 
+(** For small valid well-formed run lists, encoding their decoding recovers the original. *)
 Theorem rle_encode_decode_encode_simple : forall runs,
   is_valid_rle runs ->
   well_formed_rle runs ->
@@ -1118,12 +1194,14 @@ Proof.
       * simpl in Hlen. lia.
 Qed.
 
+(** List concatenation is associative when regrouped. *)
 Lemma app_assoc_reverse : forall A (l1 l2 l3 : list A),
   l1 ++ l2 ++ l3 = (l1 ++ l2) ++ l3.
 Proof.
   intros. rewrite <- app_assoc. reflexivity.
 Qed.
 
+(** Encoding a repeated segment followed by a different-valued list produces a cons. *)
 Lemma rle_encode_repeat_rest : forall c v rest,
   c > 0 ->
   v <> hd 0 rest ->
@@ -1142,6 +1220,7 @@ Proof.
       * apply Nat.eqb_neq. exact Heq.
 Qed.
 
+(** The first element of a decoded cons list differs from an unequal value. *)
 Lemma hd_rle_decode_neq : forall (c : nat) v c' v' rs,
   v <> v' -> c' > 0 ->
   hd 0 (rle_decode ((c', v') :: rs)) <> v.
@@ -1151,6 +1230,7 @@ Proof.
   - simpl. apply neq_sym. exact H.
 Qed.
 
+(** For all valid well-formed run lists, encoding their decoding recovers the original. *)
 Theorem rle_encode_decode_identity_full : forall runs,
   is_valid_rle runs ->
   well_formed_rle runs ->
@@ -1196,6 +1276,7 @@ Proof.
            apply (H1 (S i)) in H3. simpl in H3. exact H3.
 Qed.
 
+(** All encodings produced by the encoder are well-formed. *)
 Corollary encode_well_formed_any : forall l,
   well_formed_rle (rle_encode l).
 Proof.
@@ -1208,12 +1289,14 @@ Qed.
 
 (** * Inverse Optimality *)
 
+(** Decoding is a left inverse of encoding. *)
 Theorem decode_left_inverse : forall l,
   rle_decode (rle_encode l) = l.
 Proof.
   apply rle_correct.
 Qed.
 
+(** For well-formed valid encodings, encoding is a left inverse of decoding. *)
 Theorem encode_decode_cancel_wf : forall runs,
   well_formed_rle runs ->
   is_valid_rle runs ->
@@ -1222,6 +1305,7 @@ Proof.
   intros. apply rle_encode_decode_identity_full; auto.
 Qed.
 
+(** Decoding is injective on well-formed valid run lists. *)
 Lemma decode_injective_on_wf : forall r1 r2,
   well_formed_rle r1 ->
   well_formed_rle r2 ->
@@ -1239,6 +1323,7 @@ Qed.
 Definition is_encoding_of (runs : list run) (l : list nat) : Prop :=
   rle_decode runs = l.
 
+(** Any two well-formed valid encodings of the same list are equal. *)
 Theorem unique_well_formed_encoding : forall l runs1 runs2,
   well_formed_rle runs1 ->
   well_formed_rle runs2 ->
@@ -1255,6 +1340,7 @@ Proof.
   rewrite Henc1. rewrite Henc2. reflexivity.
 Qed.
 
+(** The canonical encoding is the unique well-formed encoding. *)
 Theorem rle_encode_is_unique_wf_encoding : forall l runs,
   well_formed_rle runs ->
   is_valid_rle runs ->
@@ -1267,6 +1353,7 @@ Proof.
   rewrite Henc. reflexivity.
 Qed.
 
+(** Decoding has a unique inverse for any encoding. *)
 Theorem decode_unique_inverse : forall l runs,
   rle_encode l = runs ->
   exists! decoded, decoded = rle_decode runs.
@@ -1277,6 +1364,7 @@ Proof.
   - intros decoded' Hdec. symmetry. exact Hdec.
 Qed.
 
+(** Encoding preserves distinctness of lists. *)
 Theorem encode_preserves_distinctness : forall l1 l2,
   l1 <> l2 ->
   rle_encode l1 <> rle_encode l2.
@@ -1286,6 +1374,7 @@ Proof.
   apply rle_injective. exact Hcontra.
 Qed.
 
+(** Decoding is a deterministic function. *)
 Lemma decode_deterministic : forall runs l1 l2,
   rle_decode runs = l1 ->
   rle_decode runs = l2 ->
@@ -1294,6 +1383,7 @@ Proof.
   intros. rewrite <- H. exact H0.
 Qed.
 
+(** Encoding is surjective onto well-formed valid run lists. *)
 Theorem encode_surjective_on_wf : forall runs,
   well_formed_rle runs ->
   is_valid_rle runs ->
@@ -1304,6 +1394,7 @@ Proof.
   apply rle_encode_decode_identity_full; auto.
 Qed.
 
+(** Encoding and decoding form a bijection on well-formed valid encodings. *)
 Theorem encode_decode_bijection_wf : forall runs l,
   well_formed_rle runs ->
   is_valid_rle runs ->
@@ -1314,6 +1405,7 @@ Proof.
   - rewrite <- H. apply rle_encode_decode_identity_full; auto.
 Qed.
 
+(** Decoding respects equality of run lists. *)
 Theorem decode_respects_equality : forall r1 r2,
   r1 = r2 ->
   rle_decode r1 = rle_decode r2.
@@ -1321,6 +1413,7 @@ Proof.
   intros. rewrite H. reflexivity.
 Qed.
 
+(** Encoding respects equality of lists. *)
 Theorem encode_respects_equality : forall l1 l2,
   l1 = l2 ->
   rle_encode l1 = rle_encode l2.
@@ -1328,6 +1421,7 @@ Proof.
   intros. rewrite H. reflexivity.
 Qed.
 
+(** Two minimal well-formed encodings of the same list are equal. *)
 Lemma wf_encoding_minimal_implies_unique : forall l runs1 runs2,
   well_formed_rle runs1 ->
   well_formed_rle runs2 ->
@@ -1344,6 +1438,7 @@ Proof.
   unfold is_encoding_of; auto.
 Qed.
 
+(** The canonical encoding achieves minimum length among all valid well-formed encodings. *)
 Theorem rle_encode_achieves_minimum : forall l,
   l <> [] ->
   forall runs,
@@ -1358,6 +1453,7 @@ Proof.
 Qed.
 
 
+(** A minimal-length encoding is the canonical encoding. *)
 Theorem minimal_encoding_is_canonical : forall l runs,
   well_formed_rle runs ->
   is_valid_rle runs ->
@@ -1370,6 +1466,7 @@ Proof.
   rewrite Hdec. reflexivity.
 Qed.
 
+(** The canonical encoding minimizes the number of runs. *)
 Theorem rle_encode_minimizes_runs : forall l runs,
   decodes_to runs l ->
   is_valid_rle runs ->
@@ -1380,12 +1477,14 @@ Proof.
   apply encode_is_minimal; auto.
 Qed.
 
+(** Encoding is idempotent through a decode-encode cycle. *)
 Theorem rle_idempotent : forall l,
   rle_encode (rle_decode (rle_encode l)) = rle_encode l.
 Proof.
   intros. rewrite rle_correct. reflexivity.
 Qed.
 
+(** Decoding is idempotent through an encode-decode cycle for well-formed runs. *)
 Theorem rle_decode_idempotent : forall runs,
   is_valid_rle runs ->
   well_formed_rle runs ->
@@ -1396,12 +1495,14 @@ Qed.
 
 (** * Error Handling and Invalid Inputs *)
 
+(** Decoding ignores runs with zero count. *)
 Lemma rle_decode_invalid_count : forall v rs,
   rle_decode ((0, v) :: rs) = rle_decode rs.
 Proof.
   intros. reflexivity.
 Qed.
 
+(** The encoder never produces runs with zero count. *)
 Lemma rle_encode_never_zero_count : forall l r,
   In r (rle_encode l) -> fst r > 0.
 Proof.
@@ -1412,6 +1513,7 @@ Proof.
     + exact H.
 Qed.
 
+(** The encoder always produces valid run lists for nonempty inputs. *)
 Lemma rle_encode_is_valid : forall l,
   l <> [] ->
   is_valid_rle (rle_encode l).
@@ -1421,6 +1523,7 @@ Proof.
   apply rle_encode_never_zero_count with l. exact Hr.
 Qed.
 
+(** There exists a unique minimal well-formed encoding for any nonempty list. *)
 Theorem fundamental_theorem_of_rle : forall l,
   l <> [] ->
   exists! encoding,
@@ -1460,6 +1563,7 @@ Proof.
     + rewrite Hlen_eq. apply rle_length.
 Qed.
 
+(** An encoding is optimal if and only if it equals the canonical encoding. *)
 Theorem optimal_encoding_decision : forall l runs,
   l <> [] ->
   well_formed_rle runs ->
@@ -1478,6 +1582,7 @@ Proof.
   - rewrite H. reflexivity.
 Qed.
 
+(** Equal encodings produce equal lists. *)
 Theorem rle_encode_canonical : forall l1 l2,
   l1 <> [] -> l2 <> [] ->
   rle_encode l1 = rle_encode l2 ->
@@ -1489,6 +1594,7 @@ Proof.
   rewrite Heq. reflexivity.
 Qed.
 
+(** The encode-decode-encode composition retracts to the encoding. *)
 Theorem rle_decode_encode_retract : forall l,
   l <> [] ->
   rle_encode (rle_decode (rle_encode l)) = rle_encode l.
@@ -1497,6 +1603,7 @@ Proof.
   rewrite rle_correct. reflexivity.
 Qed.
 
+(** The run count is a lower bound on encoding length. *)
 Theorem rle_optimal_compression_ratio : forall l,
   l <> [] ->
   forall runs,
@@ -1510,6 +1617,7 @@ Proof.
   apply rle_encode_achieves_minimum; auto.
 Qed.
 
+(** Every encoding falls into one of three complexity categories. *)
 Theorem compression_space_trichotomy : forall l runs,
   l <> [] ->
   well_formed_rle runs ->
@@ -1532,6 +1640,7 @@ Proof.
     + intro Hcontra. subst runs. lia.
 Qed.
 
+(** The run count is a Kolmogorov complexity measure for RLE. *)
 Theorem kolmogorov_complexity_for_rle : forall l k,
   l <> [] ->
   (exists runs,
@@ -1546,6 +1655,7 @@ Proof.
   apply rle_encode_achieves_minimum; auto.
 Qed.
 
+(** No encoding shorter than the run count can exist. *)
 Theorem rle_complexity_characterization : forall l,
   l <> [] ->
   forall k,
@@ -1564,6 +1674,7 @@ Qed.
 Definition sanitize_runs (runs : list run) : list run :=
   filter (fun r => match fst r with 0 => false | _ => true end) runs.
 
+(** Sanitizing runs preserves validity. *)
 Lemma sanitize_preserves_valid : forall runs,
   is_valid_rle (sanitize_runs runs).
 Proof.
@@ -1572,6 +1683,7 @@ Proof.
   destruct Hr as [_ H]. destruct (fst r); [discriminate | lia].
 Qed.
 
+(** Sanitizing runs is equivalent to filtering out zero counts. *)
 Theorem rle_decode_sanitized : forall runs,
   rle_decode (sanitize_runs runs) =
   rle_decode (filter (fun r => negb (Nat.eqb (fst r) 0)) runs).
@@ -1583,6 +1695,7 @@ Qed.
 
 (** * Robustness and Error Correction *)
 
+(** Decoding is invariant under zero-count removal. *)
 Lemma decode_with_zeros_equivalence : forall runs,
   rle_decode runs = rle_decode (sanitize_runs runs).
 Proof.
@@ -1593,12 +1706,14 @@ Proof.
     + unfold sanitize_runs. simpl. rewrite IH. reflexivity.
 Qed.
 
+(** Sanitization preserves decoding. *)
 Theorem sanitize_preserves_decode : forall runs,
   rle_decode (sanitize_runs runs) = rle_decode runs.
 Proof.
   intros. symmetry. apply decode_with_zeros_equivalence.
 Qed.
 
+(** Sanitization is idempotent. *)
 Theorem sanitize_idempotent : forall runs,
   sanitize_runs (sanitize_runs runs) = sanitize_runs runs.
 Proof.
@@ -1613,6 +1728,7 @@ Qed.
 Definition has_corruption (runs : list run) : Prop :=
   exists r, In r runs /\ fst r = 0.
 
+(** The encoder never produces corrupted run lists. *)
 Theorem encode_never_corrupted : forall l,
   ~has_corruption (rle_encode l).
 Proof.
@@ -1621,6 +1737,7 @@ Proof.
   rewrite Hzero in Hin. simpl in Hin. lia.
 Qed.
 
+(** Sanitization removes all corruption. *)
 Lemma sanitize_removes_corruption : forall runs,
   ~has_corruption (sanitize_runs runs).
 Proof.
@@ -1633,6 +1750,7 @@ Qed.
 Definition detect_corruption (runs : list run) : bool :=
   existsb (fun r => Nat.eqb (fst r) 0) runs.
 
+(** Corruption detection is sound. *)
 Lemma detect_corruption_sound : forall runs,
   detect_corruption runs = true <-> has_corruption runs.
 Proof.
@@ -1647,6 +1765,7 @@ Proof.
     apply Nat.eqb_eq. exact Hzero.
 Qed.
 
+(** Corruption detection is complete. *)
 Lemma detect_corruption_complete : forall runs,
   detect_corruption runs = false <-> ~has_corruption runs.
 Proof.
@@ -1658,6 +1777,7 @@ Proof.
     + reflexivity.
 Qed.
 
+(** Encoded run lists are never detected as corrupted. *)
 Theorem encoded_never_detected : forall l,
   detect_corruption (rle_encode l) = false.
 Proof.
@@ -1668,12 +1788,14 @@ Qed.
 Definition repair_runs (runs : list run) : list run :=
   sanitize_runs runs.
 
+(** Repaired run lists are always valid. *)
 Theorem repair_sound : forall runs,
   is_valid_rle (repair_runs runs).
 Proof.
   intros. unfold repair_runs. apply sanitize_preserves_valid.
 Qed.
 
+(** Repairing a valid run list is the identity. *)
 Theorem repair_preserves_valid : forall runs,
   is_valid_rle runs ->
   repair_runs runs = runs.
@@ -1691,18 +1813,21 @@ Proof.
       unfold is_valid_rle in *. intros. apply Hval. simpl. auto.
 Qed.
 
+(** Repair is idempotent. *)
 Theorem repair_idempotent : forall runs,
   repair_runs (repair_runs runs) = repair_runs runs.
 Proof.
   intros. unfold repair_runs. apply sanitize_idempotent.
 Qed.
 
+(** Repair preserves decoding semantics. *)
 Lemma decode_repair_equivalence : forall runs,
   rle_decode (repair_runs runs) = rle_decode runs.
 Proof.
   intros. unfold repair_runs. symmetry. apply decode_with_zeros_equivalence.
 Qed.
 
+(** Repair preserves the decoded list. *)
 Theorem repair_minimal : forall runs l,
   rle_decode runs = l ->
   rle_decode (repair_runs runs) = l.
@@ -1713,6 +1838,7 @@ Qed.
 Definition is_repaired (runs : list run) : Prop :=
   repair_runs runs = runs.
 
+(** Encoded run lists are already repaired. *)
 Theorem encoded_is_repaired : forall l,
   is_repaired (rle_encode l).
 Proof.
@@ -1722,6 +1848,7 @@ Proof.
   apply rle_encode_never_zero_count with (l := l). exact Hr.
 Qed.
 
+(** A run list is repaired if and only if it is valid. *)
 Lemma repaired_iff_valid : forall runs,
   is_repaired runs <-> is_valid_rle runs.
 Proof.
@@ -1733,6 +1860,7 @@ Qed.
 Definition count_corruptions (runs : list run) : nat :=
   length runs - length (repair_runs runs).
 
+(** Encoded run lists have zero corruptions. *)
 Theorem corruption_free_encodes : forall l,
   count_corruptions (rle_encode l) = 0.
 Proof.
@@ -1745,6 +1873,7 @@ Qed.
 
 (** * Element Preservation *)
 
+(** Membership in a repeated list characterizes the element and count. *)
 Lemma In_repeat : forall n val x,
   In x (repeat n val) <-> (n > 0 /\ x = val).
 Proof.
@@ -1759,6 +1888,7 @@ Proof.
     + right. apply IHn. split; auto. lia.
 Qed.
 
+(** Membership in a decoded list characterizes the run and value. *)
 Lemma In_rle_decode : forall runs x,
   In x (rle_decode runs) <->
   exists r, In r runs /\ fst r > 0 /\ x = snd r.
@@ -1778,6 +1908,7 @@ Proof.
       apply IHruns. exists r. split; [exact Hr | split; [exact Hpos | exact Hx]].
 Qed.
 
+(** Encoding preserves element membership. *)
 Theorem rle_preserves_elements : forall l x,
   In x l <-> In x (rle_decode (rle_encode l)).
 Proof.
@@ -1822,12 +1953,14 @@ Fixpoint generic_rle_decode (runs : list generic_run) : list A :=
   | (count, val) :: t => generic_repeat count val ++ generic_rle_decode t
   end.
 
+(** The successor case of generic repeat unfolds to a cons cell. *)
 Lemma generic_repeat_S : forall n val,
   generic_repeat (S n) val = val :: generic_repeat n val.
 Proof.
   reflexivity.
 Qed.
 
+(** Appending an element to a generic repeated list extends the repetition count. *)
 Lemma generic_repeat_cons_app : forall n val l,
   generic_repeat n val ++ (val :: l) = generic_repeat (S n) val ++ l.
 Proof.
@@ -1836,6 +1969,7 @@ Proof.
   - f_equal. apply IHn.
 Qed.
 
+(** Decoding the generic auxiliary encoder with an accumulator follows the expected structure. *)
 Lemma generic_rle_encode_aux_decode : forall l val count acc,
   generic_rle_decode (generic_rle_encode_aux val count l) ++ acc =
   generic_repeat count val ++ l ++ acc.
@@ -1850,6 +1984,7 @@ Proof.
     + simpl. rewrite <- app_assoc. f_equal. apply IHl.
 Qed.
 
+(** Decoding the generic encoding recovers the original list. *)
 Theorem generic_rle_correct : forall l : list A,
   generic_rle_decode (generic_rle_encode l) = l.
 Proof.
@@ -1871,6 +2006,7 @@ Definition generic_well_formed_rle (runs : list generic_run) : Prop :=
              snd (nth i runs (0, default_A)) <>
              snd (nth (S i) runs (0, default_A))).
 
+(** The generic auxiliary encoder never produces an empty list. *)
 Lemma generic_rle_encode_aux_not_nil : forall l val count,
   generic_rle_encode_aux val count l <> [].
 Proof.
@@ -1881,6 +2017,7 @@ Proof.
     + discriminate.
 Qed.
 
+(** All runs produced by the generic auxiliary encoder have positive counts. *)
 Lemma generic_rle_encode_aux_positive : forall l val count,
   count > 0 ->
   forall r, In r (generic_rle_encode_aux val count l) -> fst r > 0.
@@ -1894,6 +2031,7 @@ Proof.
       * apply IHl with (val := a) (count := 1); [lia|auto].
 Qed.
 
+(** The first run in the generic auxiliary encoder output has the accumulator value. *)
 Lemma generic_rle_encode_aux_first_snd : forall (a : A) count l d,
   count > 0 ->
   snd (nth 0 (generic_rle_encode_aux a count l) (0, d)) = a.
@@ -1907,11 +2045,13 @@ Proof.
     + simpl. reflexivity.
 Qed.
 
+(** Symmetric inequality for generic types. *)
 Lemma generic_neq_sym : forall (x y : A), x <> y -> y <> x.
 Proof.
   intros x y H. intro H1. apply H. symmetry. exact H1.
 Qed.
 
+(** No two adjacent runs in the generic auxiliary encoder have equal values. *)
 Lemma generic_rle_encode_aux_no_adjacent : forall l val count default,
   count > 0 ->
   forall i, i < pred (length (generic_rle_encode_aux val count l)) ->
@@ -1939,6 +2079,7 @@ Proof.
            apply IHl; [lia|exact H].
 Qed.
 
+(** The generic encoder produces well-formed run lists for nonempty inputs. *)
 Theorem generic_encode_well_formed : forall l,
   l <> [] -> generic_well_formed_rle (generic_rle_encode l).
 Proof.
@@ -1955,12 +2096,14 @@ Definition generic_is_valid_rle (runs : list generic_run) : Prop :=
 Definition generic_decodes_to (runs : list generic_run) (l : list A) : Prop :=
   generic_rle_decode runs = l.
 
+(** The length of a generic repeated list equals the repetition count. *)
 Lemma generic_repeat_length : forall n (val : A),
   length (generic_repeat n val) = n.
 Proof.
   induction n; simpl; auto.
 Qed.
 
+(** The generic decoded length equals the sum of run counts. *)
 Lemma generic_decode_length_sum : forall runs,
   length (generic_rle_decode runs) = fold_right (fun r acc => fst r + acc) 0 runs.
 Proof.
@@ -1986,6 +2129,7 @@ Definition generic_count_runs (l : list A) : nat :=
   | h :: t => generic_count_runs_aux h t
   end.
 
+(** The length of the generic auxiliary encoder output equals the run count. *)
 Lemma generic_rle_encode_aux_length : forall l val count,
   length (generic_rle_encode_aux val count l) = generic_count_runs_aux val l.
 Proof.
@@ -1994,6 +2138,7 @@ Proof.
   - destruct (A_eqb a val); simpl; auto.
 Qed.
 
+(** The length of the generic encoding equals the number of runs. *)
 Theorem generic_rle_length : forall l,
   length (generic_rle_encode l) = generic_count_runs l.
 Proof.
@@ -2002,6 +2147,7 @@ Proof.
   - apply generic_rle_encode_aux_length.
 Qed.
 
+(** If a generic encoding decodes to a nonempty list, the encoding is nonempty. *)
 Lemma generic_decode_nonempty : forall runs val l,
   generic_decodes_to runs (val :: l) -> runs <> [].
 Proof.
@@ -2009,6 +2155,7 @@ Proof.
   unfold generic_decodes_to in H. simpl in H. discriminate.
 Qed.
 
+(** A generic encoding that decodes to a cons list has a structured first run. *)
 Lemma generic_decode_cons_structure : forall runs val l,
   generic_decodes_to runs (val :: l) ->
   generic_is_valid_rle runs ->
@@ -2043,6 +2190,7 @@ Proof.
         unfold generic_decodes_to. simpl. exact H2.
 Qed.
 
+(** The generic auxiliary run counter is bounded by the encoding length. *)
 Lemma generic_count_runs_minimal_aux_simple : forall l val runs,
   generic_decodes_to runs (val :: l) ->
   generic_is_valid_rle runs ->
@@ -2088,6 +2236,7 @@ Proof.
            injection H0; intros. subst a. congruence.
 Qed.
 
+(** The generic encoder produces encodings of minimal length among all valid well-formed encodings. *)
 Theorem generic_encode_is_minimal : forall l runs,
   generic_decodes_to runs l ->
   generic_is_valid_rle runs ->
@@ -2113,6 +2262,7 @@ End GenericRLE.
 
 (** * Generic RLE Instantiations *)
 
+(** Generic optimality holds for all types with decidable equality. *)
 Theorem generic_optimality_works : forall A (eqb : A -> A -> bool)
   (eqb_spec : forall x y, reflect (x = y) (eqb x y))
   (default : A) (l : list A) (runs : list (nat * A)),
@@ -2124,6 +2274,7 @@ Proof.
   intros. eapply generic_encode_is_minimal; eauto.
 Qed.
 
+(** Generic RLE can be instantiated for any type with decidable equality. *)
 Corollary generic_rle_instantiable_for_any_type :
   forall A (eqb : A -> A -> bool) (eqb_spec : forall x y, reflect (x = y) (eqb x y)) default,
   forall l runs,
@@ -2173,6 +2324,7 @@ Definition rle_encode_steps (l : list nat) : nat :=
   | h :: t => S (rle_encode_steps_aux h 1 t)
   end.
 
+(** The auxiliary encoder takes linear time in the input length. *)
 Lemma rle_encode_steps_aux_linear : forall l val count,
   rle_encode_steps_aux val count l = length l + 1.
 Proof.
@@ -2183,6 +2335,7 @@ Proof.
     + rewrite IHl. reflexivity.
 Qed.
 
+(** Encoding takes linear time in the input length. *)
 Theorem rle_encode_linear_time : forall l,
   rle_encode_steps l = length l + 1.
 Proof.
@@ -2191,6 +2344,7 @@ Proof.
   - simpl. rewrite rle_encode_steps_aux_linear. reflexivity.
 Qed.
 
+(** Encoding is in O(n). *)
 Theorem rle_encode_is_O_n :
   (fun n => rle_encode_steps (repeat n 0)) ∈O( linear ).
 Proof.
@@ -2210,6 +2364,7 @@ Fixpoint rle_decode_steps (runs : list run) : nat :=
   | (count, val) :: t => count + rle_decode_steps t
   end.
 
+(** Decoding time equals the sum of run counts plus one. *)
 Theorem rle_decode_linear_time : forall runs,
   rle_decode_steps runs = fold_right (fun r acc => fst r + acc) 1 runs.
 Proof.
@@ -2218,6 +2373,7 @@ Proof.
   - destruct a. simpl. rewrite IHruns. reflexivity.
 Qed.
 
+(** Decoding time equals the output length plus one. *)
 Theorem rle_decode_time_equals_output_length : forall runs,
   rle_decode_steps runs = length (rle_decode runs) + 1.
 Proof.
@@ -2227,6 +2383,7 @@ Proof.
   - destruct a. simpl. rewrite IHruns. lia.
 Qed.
 
+(** Decoding is in O(output_length). *)
 Theorem rle_decode_is_O_output :
   forall m, (fun n => rle_decode_steps [(n, m)]) ∈O( linear ).
 Proof.
@@ -2240,12 +2397,14 @@ Proof.
     + simpl. lia.
 Qed.
 
+(** Encoding space usage is bounded linearly by the input length. *)
 Lemma rle_encode_space_linear : forall l,
   length (rle_encode l) <= length l.
 Proof.
   apply rle_worst_case.
 Qed.
 
+(** Encoding space equals the run count. *)
 Theorem rle_space_optimal : forall l,
   length (rle_encode l) = count_runs l.
 Proof.
@@ -2260,6 +2419,7 @@ Definition encode_space_usage (l : list nat) : nat :=
 Definition decode_space_usage (runs : list run) : nat :=
   length (rle_decode runs).
 
+(** Encoding space usage is bounded by twice the input length. *)
 Theorem encode_space_bounded : forall l,
   encode_space_usage l <= 2 * length l.
 Proof.
@@ -2268,6 +2428,7 @@ Proof.
   lia.
 Qed.
 
+(** Decoding space equals the sum of run counts. *)
 Theorem decode_space_exact : forall runs,
   decode_space_usage runs = fold_right (fun r acc => fst r + acc) 0 runs.
 Proof.
@@ -2275,6 +2436,7 @@ Proof.
   apply decode_length_sum.
 Qed.
 
+(** Roundtrip space usage equals the original list length. *)
 Theorem roundtrip_space_preserved : forall l,
   decode_space_usage (rle_encode l) = length l.
 Proof.
@@ -2282,6 +2444,7 @@ Proof.
   rewrite rle_correct. reflexivity.
 Qed.
 
+(** Uniform lists achieve optimal space usage. *)
 Lemma encode_space_uniform_optimal : forall n val,
   n > 0 ->
   encode_space_usage (repeat n val) = 2.
@@ -2290,6 +2453,7 @@ Proof.
   rewrite rle_best_case; auto.
 Qed.
 
+(** Alternating lists achieve maximal space usage. *)
 Lemma encode_space_alternating_maximal : forall l,
   (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
   encode_space_usage l = 2 * length l.
@@ -2301,6 +2465,7 @@ Qed.
 Definition space_overhead (l : list nat) : nat :=
   encode_space_usage l - length l.
 
+(** The auxiliary run counter is always at least one. *)
 Lemma count_runs_aux_ge_one : forall val l,
   count_runs_aux val l >= 1.
 Proof.
@@ -2313,6 +2478,7 @@ Proof.
     + specialize (IH h). lia.
 Qed.
 
+(** Nonempty lists have at least one run. *)
 Lemma count_runs_ge_one : forall l,
   l <> [] -> count_runs l >= 1.
 Proof.
@@ -2323,6 +2489,7 @@ Proof.
     apply count_runs_aux_ge_one.
 Qed.
 
+(** Encoding space for nonempty lists is at least two. *)
 Theorem encode_space_minimum : forall l,
   l <> [] -> encode_space_usage l >= 2.
 Proof.
@@ -2337,6 +2504,7 @@ Proof.
     lia.
 Qed.
 
+(** Space overhead is bounded by the input length. *)
 Theorem space_overhead_bounded : forall l,
   space_overhead l <= length l.
 Proof.
@@ -2351,6 +2519,7 @@ Definition compression_ratio_space (l : list nat) : option (nat * nat) :=
   | _ => Some (length l, encode_space_usage l)
   end.
 
+(** Uniform lists achieve the best compression ratio in space. *)
 Theorem best_compression_ratio_space : forall n val,
   n > 1 ->
   compression_ratio_space (repeat n val) = Some (n, 2).
@@ -2846,6 +3015,7 @@ Proof.
   intros. simpl. rewrite app_nil_r. reflexivity.
 Qed.
 
+(** Encoding with maxrun continues accumulating when count is under the limit. *)
 Lemma rle_encode_aux_maxrun_same_under : forall max_run val count l,
   count < max_run ->
   rle_encode_aux_maxrun max_run val count (val :: l) =
@@ -2855,6 +3025,7 @@ Proof.
   apply Nat.ltb_lt in H. rewrite H. reflexivity.
 Qed.
 
+(** Encoding with maxrun emits a run when count reaches the maximum. *)
 Lemma rle_encode_aux_maxrun_same_at_max : forall max_run val count l,
   count = max_run ->
   rle_encode_aux_maxrun max_run val count (val :: l) =
@@ -2864,6 +3035,7 @@ Proof.
   subst count. rewrite Nat.ltb_irrefl. reflexivity.
 Qed.
 
+(** Repeated segments concatenate to form a longer repetition. *)
 Lemma repeat_split_at_max : forall max_run val,
   repeat max_run val ++ repeat 1 val = repeat (S max_run) val.
 Proof.
@@ -2872,6 +3044,7 @@ Proof.
   - simpl. f_equal. apply IHmax_run.
 Qed.
 
+(** Encoding with maxrun emits a run when count exceeds the maximum. *)
 Lemma rle_encode_aux_maxrun_same_over_max : forall max_run val count l,
   count > max_run ->
   rle_encode_aux_maxrun max_run val count (val :: l) =
@@ -2882,6 +3055,7 @@ Proof.
   rewrite H0. reflexivity.
 Qed.
 
+(** Encoding with maxrun starts a new run when encountering a different value. *)
 Lemma rle_encode_aux_maxrun_diff : forall max_run val count h l,
   h <> val ->
   rle_encode_aux_maxrun max_run val count (h :: l) =
@@ -2893,6 +3067,7 @@ Proof.
   - reflexivity.
 Qed.
 
+(** Decoding a maxrun-encoded list with accumulator recovers the repeated prefix and list. *)
 Lemma rle_encode_aux_maxrun_decode : forall max_run l val count,
   max_run > 0 ->
   count <= max_run ->
@@ -2919,6 +3094,7 @@ Proof.
       rewrite Hrep1a. rewrite <- app_assoc. simpl. reflexivity.
 Qed.
 
+(** Maxrun encoding and decoding form a correct roundtrip. *)
 Theorem rle_maxrun_correct : forall max_run l,
   max_run > 0 ->
   rle_decode (rle_encode_maxrun max_run l) = l.
@@ -2943,6 +3119,7 @@ Definition strictly_well_formed_capped (cap : nat) (runs : list run) : Prop :=
     fst (nth i runs (0,0)) = cap ->
     snd (nth i runs (0,0)) <> snd (nth (S i) runs (0,0))).
 
+(** All runs in maxrun-encoded output have positive counts. *)
 Lemma rle_encode_aux_maxrun_positive : forall max_run l val count,
   max_run > 0 ->
   count > 0 ->
@@ -2962,6 +3139,7 @@ Proof.
       * apply IHl with (val := a) (count := 1); auto; lia.
 Qed.
 
+(** Maxrun encoding produces only positive counts for nonempty lists. *)
 Theorem rle_maxrun_positive_counts : forall max_run l,
   max_run > 0 ->
   l <> [] ->
@@ -2975,6 +3153,7 @@ Proof.
     apply rle_encode_aux_maxrun_positive with (max_run := max_run) (val := n) (count := 1) (l := l); auto; lia.
 Qed.
 
+(** All runs in maxrun-encoded output have counts bounded by the maximum. *)
 Lemma rle_encode_aux_maxrun_bounded : forall max_run l val count,
   max_run > 0 ->
   count > 0 ->
@@ -2997,6 +3176,7 @@ Proof.
       * apply IHl with (val := a) (count := 1); auto; lia.
 Qed.
 
+(** Maxrun encoding respects the maximum run length bound. *)
 Theorem rle_maxrun_bounded : forall max_run l,
   max_run > 0 ->
   forall r, In r (rle_encode_maxrun max_run l) -> fst r <= max_run.
@@ -3008,6 +3188,7 @@ Proof.
     apply rle_encode_aux_maxrun_bounded with (val := n) (count := 1) (l := l); auto; lia.
 Qed.
 
+(** The first run in maxrun-encoded output has the accumulator value. *)
 Lemma rle_encode_aux_maxrun_first_snd : forall cap a count l,
   cap > 0 ->
   count > 0 ->
@@ -3025,6 +3206,7 @@ Proof.
     + simpl. reflexivity.
 Qed.
 
+(** Adjacent runs in maxrun-encoded output either have different values or the first has count equal to cap. *)
 Lemma rle_encode_aux_maxrun_no_adjacent : forall cap l v c,
   cap > 0 ->
   0 < c <= cap ->
@@ -3071,6 +3253,7 @@ Proof.
          apply IHl with (v := a) (c := 1) in Hi'; auto.
 Qed.
 
+(** Maxrun encoding produces well-formed capped run lists. *)
 Theorem rle_maxrun_wf_capped : forall cap l,
   cap > 0 ->
   wf_rle_capped cap (rle_encode_maxrun cap l).
@@ -3084,6 +3267,7 @@ Proof.
     + unfold rle_encode_maxrun. apply rle_encode_aux_maxrun_no_adjacent; lia.
 Qed.
 
+(** Maxrun encoding respects the cap constraint. *)
 Theorem rle_maxrun_respects_cap : forall cap l,
   cap > 0 ->
   wf_rle_capped cap (rle_encode_maxrun cap l).
@@ -3138,6 +3322,7 @@ Definition stream_state_invariant (state : rle_stream_state) : Prop :=
   (current_count state <= max_run_length state) /\
   (max_run_length state > 0).
 
+(** Pushing a value to the stream state preserves the state invariant. *)
 Lemma stream_push_preserves_invariant : forall state val,
   stream_state_invariant state ->
   stream_state_invariant (snd (stream_push state val)).
@@ -3159,6 +3344,7 @@ Proof.
       * simpl. split; [right; lia | split; [lia | exact Hmax]].
 Qed.
 
+(** Encoding a list through the stream state preserves the state invariant. *)
 Lemma stream_encode_list_preserves_invariant : forall l state,
   stream_state_invariant state ->
   stream_state_invariant (snd (stream_encode_list state l)).
@@ -3189,6 +3375,7 @@ Proof.
       exact Hinv.
 Qed.
 
+(** The initial stream state satisfies the state invariant. *)
 Lemma init_stream_state_invariant : forall max_run,
   max_run > 0 ->
   stream_state_invariant (init_stream_state max_run).
@@ -3205,6 +3392,7 @@ Definition stream_complete_encode (max_run : nat) (l : list nat) : list run :=
   | Some r => runs ++ [r]
   end.
 
+(** Complete stream encoding always produces a result. *)
 Theorem stream_complete_encode_exists : forall max_run l,
   max_run > 0 ->
   exists runs, stream_complete_encode max_run l = runs.
@@ -3214,6 +3402,7 @@ Proof.
   reflexivity.
 Qed.
 
+(** Streaming encoder with initial accumulator matches the auxiliary maxrun encoder. *)
 Lemma stream_vs_aux : forall cap xs v c,
   cap > 0 ->
   0 < c <= cap ->
@@ -3270,6 +3459,7 @@ Proof.
         simpl. reflexivity.
 Qed.
 
+(** Streaming encoding produces the same output as batch maxrun encoding. *)
 Theorem stream_eq_batch : forall cap xs,
   cap > 0 ->
   stream_complete_encode cap xs = rle_encode_maxrun cap xs.
@@ -3294,18 +3484,21 @@ Qed.
 
 Definition stream_state_size (state : rle_stream_state) : nat := 3.
 
+(** Stream state has constant size independent of input. *)
 Theorem stream_state_constant_size : forall state,
   stream_state_size state = 3.
 Proof.
   intros. reflexivity.
 Qed.
 
+(** Pushing a value preserves stream state size. *)
 Theorem stream_push_preserves_size : forall state val,
   stream_state_size (snd (stream_push state val)) = stream_state_size state.
 Proof.
   intros. reflexivity.
 Qed.
 
+(** Encoding a list through streaming uses constant space. *)
 Theorem stream_encode_list_constant_space : forall l state,
   stream_state_size (snd (stream_encode_list state l)) = stream_state_size state.
 Proof.
@@ -3323,6 +3516,7 @@ Qed.
 Definition stream_memory_usage (state : rle_stream_state) (output : list run) : nat :=
   stream_state_size state + 2 * length output.
 
+(** Stream encoder maintains bounded space usage. *)
 Theorem stream_encoder_space_bound : forall l state,
   let (output, final_state) := stream_encode_list state l in
   stream_state_size final_state = stream_state_size state.
@@ -3333,6 +3527,7 @@ Proof.
   apply stream_encode_list_constant_space.
 Qed.
 
+(** Streaming encoding uses constant space for any input length. *)
 Theorem streaming_uses_constant_space : forall max_run,
   max_run > 0 ->
   forall l,
@@ -3394,6 +3589,7 @@ Definition decode_state_invariant (state : decode_stream_state) (runs : list run
        current_decode_val state = val)
   end.
 
+(** The initial decode state satisfies the decode state invariant. *)
 Lemma init_decode_state_invariant : forall runs,
   decode_state_invariant init_decode_state runs.
 Proof.
@@ -3403,6 +3599,7 @@ Proof.
   - left. reflexivity.
 Qed.
 
+(** Pulling from the decode stream produces at most one value. *)
 Lemma stream_pull_output : forall state runs,
   let '(vals, new_state, new_runs) := stream_pull state runs in
   vals = [] \/ exists v, vals = [v].
@@ -3418,9 +3615,11 @@ Proof.
   - right. exists (current_decode_val state). reflexivity.
 Qed.
 
+(** Compute the total number of values that will be produced by decoding a run list. *)
 Definition compute_decode_size (runs : list run) : nat :=
   fold_right (fun r acc => fst r + acc) 0 runs.
 
+(** Decode runs only if output size does not exceed the specified limit. *)
 Definition safe_decode_with_limit (max_output : nat) (runs : list run)
   : option (list nat) :=
   if Nat.leb (compute_decode_size runs) max_output then
@@ -3428,6 +3627,7 @@ Definition safe_decode_with_limit (max_output : nat) (runs : list run)
   else
     None.
 
+(** Decoding from an empty run list produces an empty output. *)
 Lemma stream_decode_empty_state_nil : forall n,
   stream_decode_list n init_decode_state [] = [].
 Proof.
@@ -3436,6 +3636,7 @@ Proof.
   - simpl. unfold stream_pull. simpl. reflexivity.
 Qed.
 
+(** The computed decode size equals the actual decoded output length. *)
 Lemma compute_decode_size_correct : forall runs,
   compute_decode_size runs = length (rle_decode runs).
 Proof.
@@ -3443,6 +3644,7 @@ Proof.
   symmetry. apply decode_length_sum.
 Qed.
 
+(** Safe decoding ensures output length does not exceed the specified limit. *)
 Theorem safe_decode_protects_memory : forall max_output runs result,
   safe_decode_with_limit max_output runs = Some result ->
   length result <= max_output.
@@ -3455,6 +3657,7 @@ Proof.
   - discriminate.
 Qed.
 
+(** The streaming decoder always completes with sufficient fuel. *)
 Theorem streaming_decoder_completeness :
   forall runs, exists fuel,
     fuel >= compute_decode_size runs.
@@ -3464,6 +3667,7 @@ Proof.
   lia.
 Qed.
 
+(** Streaming decoder with empty run list produces empty output. *)
 Lemma stream_decode_empty : forall fuel state,
   remaining_count state = 0 ->
   stream_decode_list fuel state [] = [].
@@ -3473,6 +3677,7 @@ Proof.
   - unfold stream_pull. rewrite H. reflexivity.
 Qed.
 
+(** Run lists with zero total decode size decode to the empty list. *)
 Lemma compute_decode_size_zero_only_empty : forall runs,
   compute_decode_size runs = 0 ->
   rle_decode runs = [].
@@ -3486,12 +3691,14 @@ Proof.
     apply IHrs. unfold compute_decode_size. exact H.
 Qed.
 
+(** Streaming decoder with zero fuel produces empty output. *)
 Lemma stream_decode_zero_fuel : forall runs state,
   stream_decode_list 0 state runs = [].
 Proof.
   reflexivity.
 Qed.
 
+(** Streaming decoder skips runs with zero count. *)
 Lemma stream_decode_zero_count : forall fuel' state runs' val,
   remaining_count state = 0 ->
   stream_decode_list (S fuel') state ((0, val) :: runs') =
@@ -3503,6 +3710,7 @@ Proof.
   - reflexivity.
 Qed.
 
+(** Streaming decoder handles singleton runs by emitting one value. *)
 Lemma stream_decode_single_step : forall fuel' val state runs',
   remaining_count state = 0 ->
   stream_decode_list (S fuel') state ((S 0, val) :: runs') =
@@ -3511,6 +3719,7 @@ Proof.
   intros. simpl. unfold stream_pull. rewrite H. simpl. reflexivity.
 Qed.
 
+(** Streaming decoder handles multi-count runs by emitting first value and updating state. *)
 Lemma stream_decode_multi_step : forall fuel' count val state runs',
   remaining_count state = 0 ->
   count > 0 ->
@@ -3520,6 +3729,7 @@ Proof.
   intros. simpl. unfold stream_pull. rewrite H. simpl. reflexivity.
 Qed.
 
+(** Streaming decoder continues emitting from state with positive remaining count. *)
 Lemma stream_decode_continue : forall fuel' count val runs',
   count > 0 ->
   stream_decode_list (S fuel') (mk_decode_state count val) runs' =
@@ -3528,6 +3738,7 @@ Proof.
   intros. destruct count; [lia|]. simpl. unfold stream_pull. simpl. reflexivity.
 Qed.
 
+(** Streaming decoder exhausts state's remaining count before processing new runs. *)
 Lemma stream_decode_repeat_helper : forall n val fuel runs',
   fuel >= n + compute_decode_size runs' ->
   stream_decode_list fuel (mk_decode_state n val) runs' =
@@ -3542,6 +3753,7 @@ Proof.
       simpl. f_equal.
 Qed.
 
+(** Streaming decoder with sufficient fuel produces correct decoded output. *)
 Lemma stream_decode_with_state_strong : forall runs fuel state,
   remaining_count state = 0 ->
   fuel >= compute_decode_size runs + length runs ->
@@ -3573,6 +3785,7 @@ Proof.
            rewrite IH; auto.
 Qed.
 
+(** There exists sufficient fuel for streaming decoder to complete any run list. *)
 Theorem stream_decode_complete : forall runs,
   exists fuel, fuel >= compute_decode_size runs /\
   stream_decode_list fuel init_decode_state runs = rle_decode runs.
@@ -3586,6 +3799,7 @@ Proof.
     + lia.
 Qed.
 
+(** Streaming decoder with adequate fuel is equivalent to batch decoder. *)
 Theorem streaming_decoder_equivalent : forall runs fuel,
   fuel >= compute_decode_size runs + length runs ->
   stream_decode_list fuel init_decode_state runs = rle_decode runs.
@@ -3596,6 +3810,7 @@ Proof.
   - exact Hfuel.
 Qed.
 
+(** Streaming decoder with minimal fuel equals batch decoder. *)
 Corollary streaming_decoder_minimal_fuel : forall runs,
   stream_decode_list (compute_decode_size runs + length runs) init_decode_state runs = rle_decode runs.
 Proof.
@@ -3604,6 +3819,7 @@ Proof.
   lia.
 Qed.
 
+(** Pull from decode stream with a budget constraint, returning updated budget or None if exceeded. *)
 Definition stream_pull_safe (state : decode_stream_state) (runs : list run) (budget : nat)
   : option (list nat * decode_stream_state * list run * nat) :=
   let '(vals, new_state, new_runs) := stream_pull state runs in
@@ -3615,12 +3831,14 @@ Definition stream_pull_safe (state : decode_stream_state) (runs : list run) (bud
 
 (** * I/O and Serialization *)
 
+(** Serialize a natural number to a list of booleans using unary encoding. *)
 Fixpoint serialize_nat (n : nat) : list bool :=
   match n with
   | 0 => []
   | S n' => true :: serialize_nat n'
   end.
 
+(** Deserialize a list of booleans to a natural number using unary decoding. *)
 Fixpoint deserialize_nat (bits : list bool) : nat :=
   match bits with
   | [] => 0
@@ -3628,6 +3846,7 @@ Fixpoint deserialize_nat (bits : list bool) : nat :=
   | false :: _ => 0
   end.
 
+(** Serialization and deserialization of natural numbers form a roundtrip. *)
 Theorem serialize_deserialize_nat : forall n,
   deserialize_nat (serialize_nat n) = n.
 Proof.
@@ -3636,10 +3855,12 @@ Proof.
   - rewrite IHn. reflexivity.
 Qed.
 
+(** Serialize a run to a list of booleans with false separators. *)
 Definition serialize_run (r : run) : list bool :=
   let (count, val) := r in
   serialize_nat count ++ [false] ++ serialize_nat val ++ [false].
 
+(** Serialize a list of runs to a flat list of booleans. *)
 Fixpoint serialize_runs (runs : list run) : list bool :=
   match runs with
   | [] => []
@@ -3648,19 +3869,27 @@ Fixpoint serialize_runs (runs : list run) : list bool :=
 
 (** * Integer Width Support *)
 
+(** Maximum value for 8-bit unsigned integers. *)
 Definition max_int_8 : nat := 2^8 - 1.
+
+(** Maximum value for 16-bit unsigned integers. *)
 Definition max_int_16 : nat := 2^16 - 1.
+
+(** Maximum value for 32-bit unsigned integers. *)
 Definition max_int_32 : nat := 2^32 - 1.
 
+(** Encode a list only if all values are within the specified maximum. *)
 Definition bounded_rle_encode (max_val : nat) (l : list nat) : option (list run) :=
   if forallb (fun x => Nat.leb x max_val) l then
     Some (rle_encode l)
   else
     None.
 
+(** All run counts in the list fit within the specified maximum. *)
 Definition runs_fit_width (max_count : nat) (runs : list run) : Prop :=
   forall r, In r runs -> fst r <= max_count.
 
+(** Encode with both value and count bounds, using maxrun encoding to enforce count limit. *)
 Definition bounded_rle_encode_full (max_val max_count : nat) (l : list nat)
   : option (list run) :=
   if forallb (fun x => Nat.leb x max_val) l then
@@ -3673,9 +3902,11 @@ Definition bounded_rle_encode_full (max_val max_count : nat) (l : list nat)
   else
     None.
 
+(** Safe 8-bit encoding with both value and count limited to 255. *)
 Definition rle_encode_u8_safe (l : list nat) : option (list run) :=
   bounded_rle_encode_full 255 255 l.
 
+(** Safe 8-bit encoding ensures all values and counts fit in 8 bits. *)
 Theorem rle_encode_u8_safe_sound : forall l runs,
   rle_encode_u8_safe l = Some runs ->
   (forall x, In x l -> x <= 255) /\
@@ -3704,20 +3935,32 @@ Proof.
     split; assumption.
 Qed.
 
+(** Encode with 8-bit value bounds. *)
 Definition rle_encode_u8 := bounded_rle_encode max_int_8.
+
+(** Encode with 16-bit value bounds. *)
 Definition rle_encode_u16 := bounded_rle_encode max_int_16.
+
+(** Encode with 32-bit value bounds. *)
 Definition rle_encode_u32 := bounded_rle_encode max_int_32.
 
+(** Decode runs only if all values are within the specified maximum. *)
 Definition bounded_rle_decode (max_val : nat) (runs : list run) : option (list nat) :=
   if forallb (fun r => Nat.leb (snd r) max_val) runs then
     Some (rle_decode runs)
   else
     None.
 
+(** Decode with 8-bit value bounds. *)
 Definition rle_decode_u8 := bounded_rle_decode max_int_8.
+
+(** Decode with 16-bit value bounds. *)
 Definition rle_decode_u16 := bounded_rle_decode max_int_16.
+
+(** Decode with 32-bit value bounds. *)
 Definition rle_decode_u32 := bounded_rle_decode max_int_32.
 
+(** Bounded 8-bit encoding succeeds for valid input and roundtrips correctly. *)
 Lemma bounded_encode_u8_correct : forall l,
   (forall x, In x l -> x <= max_int_8) ->
   exists runs, rle_encode_u8 l = Some runs /\ rle_decode runs = l.
@@ -3735,6 +3978,7 @@ Proof.
   - apply rle_correct.
 Qed.
 
+(** Bounded 16-bit encoding succeeds for valid input and roundtrips correctly. *)
 Lemma bounded_encode_u16_correct : forall l,
   (forall x, In x l -> x <= max_int_16) ->
   exists runs, rle_encode_u16 l = Some runs /\ rle_decode runs = l.
@@ -3752,6 +3996,7 @@ Proof.
   - apply rle_correct.
 Qed.
 
+(** Bounded 32-bit encoding succeeds for valid input and roundtrips correctly. *)
 Lemma bounded_encode_u32_correct : forall l,
   (forall x, In x l -> x <= max_int_32) ->
   exists runs, rle_encode_u32 l = Some runs /\ rle_decode runs = l.
@@ -3769,6 +4014,7 @@ Proof.
   - apply rle_correct.
 Qed.
 
+(** Bounded 8-bit decoding succeeds for runs with valid values. *)
 Corollary rle_decode_u8_correct : forall runs,
   (forall r, In r runs -> snd r <= max_int_8) ->
   rle_decode_u8 runs = Some (rle_decode runs).
@@ -3784,6 +4030,7 @@ Proof.
   rewrite H0. reflexivity.
 Qed.
 
+(** Bounded 16-bit decoding succeeds for runs with valid values. *)
 Corollary rle_decode_u16_correct : forall runs,
   (forall r, In r runs -> snd r <= max_int_16) ->
   rle_decode_u16 runs = Some (rle_decode runs).
@@ -3799,6 +4046,7 @@ Proof.
   rewrite H0. reflexivity.
 Qed.
 
+(** Bounded 32-bit decoding succeeds for runs with valid values. *)
 Corollary rle_decode_u32_correct : forall runs,
   (forall r, In r runs -> snd r <= max_int_32) ->
   rle_decode_u32 runs = Some (rle_decode runs).
@@ -3816,10 +4064,14 @@ Qed.
 
 (** * Verified Performance Benchmarks *)
 
+(** Benchmark list: 1000 copies of the value 42. *)
 Definition benchmark_uniform_1000 : list nat := repeat 1000 42.
+
+(** Benchmark list: 1000 alternating values (0, 1, 0, 1, ...). *)
 Definition benchmark_alternating_1000 : list nat :=
   map (fun i => i mod 2) (seq 0 1000).
 
+(** Benchmark: encoding 1000 uniform values produces a single run. *)
 Theorem benchmark_uniform_optimal :
   length (rle_encode benchmark_uniform_1000) = 1.
 Proof.
@@ -3827,6 +4079,7 @@ Proof.
   apply rle_best_case. lia.
 Qed.
 
+(** Benchmark: uniform 1000-element list achieves 1000:1 compression ratio. *)
 Theorem benchmark_uniform_ratio :
   compression_ratio_num benchmark_uniform_1000 (rle_encode benchmark_uniform_1000) = 1000 /\
   compression_ratio_den benchmark_uniform_1000 (rle_encode benchmark_uniform_1000) = 1.
@@ -3835,6 +4088,7 @@ Proof.
   apply compression_ratio_uniform. lia.
 Qed.
 
+(** Benchmark: encoding 1000 elements takes exactly 1001 time steps. *)
 Theorem benchmark_encode_time_linear :
   rle_encode_steps benchmark_uniform_1000 = 1001.
 Proof.
@@ -3845,47 +4099,56 @@ Qed.
 
 (** * Test Suite *)
 
+(** Decidable equality for runs. *)
 Definition run_eq_dec : forall (r1 r2 : run), {r1 = r2} + {r1 <> r2}.
 Proof.
   decide equality; apply Nat.eq_dec.
 Defined.
 
+(** Test that decode-encode is a fixpoint for valid runs. *)
 Definition test_decode_encode_fixpoint (runs : list run) : bool :=
   let decoded := rle_decode runs in
   let reencoded := rle_encode decoded in
   if list_eq_dec run_eq_dec runs reencoded then true else false.
 
+(** Example showing non-well-formed runs can decode to the same list. *)
 Definition counterexample_uniqueness : list run * list run :=
   ([(3, 1); (2, 1)], [(5, 1)]).
 
+(** Test demonstrating that non-well-formed encodings are not unique. *)
 Definition test_uniqueness : bool :=
   let (r1, r2) := counterexample_uniqueness in
   let d1 := rle_decode r1 in
   let d2 := rle_decode r2 in
-  if list_eq_dec Nat.eq_dec d1 d2 
+  if list_eq_dec Nat.eq_dec d1 d2
   then if list_eq_dec run_eq_dec r1 r2 then true else false
   else true.
 
+(** Test that streaming encoding equals batch encoding. *)
 Definition test_streaming_equivalence (l : list nat) : bool :=
   let batch := rle_encode_maxrun 255 l in
   let streaming := stream_complete_encode 255 l in
   if list_eq_dec run_eq_dec batch streaming then true else false.
 
+(** Test that alternating values achieve no compression. *)
 Definition test_worst_case : bool :=
   let alternating := [1; 2; 1; 2; 1; 2; 1; 2] in
   let encoded := rle_encode alternating in
   Nat.eqb (length encoded) (length alternating).
 
+(** Test that uniform values achieve optimal compression to single run. *)
 Definition test_best_case : bool :=
   let uniform := repeat 1000 42 in
   let encoded := rle_encode uniform in
   Nat.eqb (length encoded) 1.
 
+(** Test that distinct sequential values cannot be compressed. *)
 Definition test_impossible_compression : bool :=
   let data := [1; 2; 3; 4; 5] in
   let encoded := rle_encode data in
   negb (Nat.ltb (length encoded) (length data)).
 
+(** Test that concatenated encoding is no longer than sum of individual encodings. *)
 Definition test_incremental_consistency (l1 l2 : list nat) : bool :=
   let full := rle_encode (l1 ++ l2) in
   let p1 := rle_encode l1 in
@@ -3900,15 +4163,17 @@ Eval compute in test_impossible_compression.
 Eval compute in test_incremental_consistency [1;1;1] [1;1;1].
 Eval compute in well_formed_rle (rle_encode [1;1;1;1;1]).
 
+(** Test that double roundtrip preserves both list and encoding. *)
 Definition test_double_roundtrip (l : list nat) : bool :=
   let e1 := rle_encode l in
   let d1 := rle_decode e1 in
   let e2 := rle_encode d1 in
   let d2 := rle_decode e2 in
-  if list_eq_dec Nat.eq_dec l d2 
+  if list_eq_dec Nat.eq_dec l d2
   then if list_eq_dec run_eq_dec e1 e2 then true else false
   else false.
 
+(** Test that maxrun boundary splits runs correctly at the limit. *)
 Definition test_maxrun_boundary : bool :=
   let exactly_255 := repeat 255 7 in
   let exactly_256 := repeat 256 7 in
@@ -3917,6 +4182,7 @@ Definition test_maxrun_boundary : bool :=
   andb (Nat.eqb (length enc_255) 1)
        (Nat.eqb (length enc_256) 2).
 
+(** Test that incremental streaming produces same result as batch encoding. *)
 Definition test_streaming_state_consistency : bool :=
   let state1 := init_stream_state 255 in
   let (r1, s1) := stream_encode_list state1 [1;1;1] in
@@ -3929,16 +4195,19 @@ Definition test_streaming_state_consistency : bool :=
   let batch := rle_encode [1;1;1;1;1;1;2;2;2] in
   if list_eq_dec run_eq_dec final batch then true else false.
 
+(** Test that encoding never increases length beyond original. *)
 Definition test_compression_never_expands : bool :=
-  let test_lists := [[1]; [1;2]; [1;2;3]; [1;1]; [1;1;1]; 
+  let test_lists := [[1]; [1;2]; [1;2;3]; [1;1]; [1;1;1];
                      [1;2;1;2]; repeat 100 5; repeat 50 3 ++ repeat 50 4] in
   forallb (fun l => Nat.leb (length (rle_encode l)) (length l)) test_lists.
 
+(** Test that sum of run counts equals original list length. *)
 Definition test_encode_preserves_length_sum : bool :=
   let l := [1;1;2;2;2;3;3;3;3] in
   let encoded := rle_encode l in
   Nat.eqb (fold_right (fun r acc => fst r + acc) 0 encoded) (length l).
 
+(** Test that maxrun and standard encoding decode to the same list. *)
 Definition test_maxrun_decode_equals_standard : bool :=
   let l := repeat 1000 42 in
   let standard := rle_encode l in
@@ -3953,6 +4222,7 @@ Eval compute in test_compression_never_expands.
 Eval compute in test_encode_preserves_length_sum.
 Eval compute in test_maxrun_decode_equals_standard.
 
+(** Test that streaming decoder equals batch decoder. *)
 Definition test_streaming_decoder_equivalent : bool :=
   let runs := [(3, 1); (2, 2); (4, 3)] in
   let fuel := compute_decode_size runs + length runs in
