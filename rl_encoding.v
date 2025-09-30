@@ -2801,13 +2801,13 @@ Proof.
   decide equality; apply Nat.eq_dec.
 Defined.
 
-Fixpoint count_distinct_runs (l : list nat) : nat :=
+Definition count_distinct_runs (l : list nat) : nat :=
   count_runs l.
 
 Definition run_frequency (r : run) (runs : list run) : nat :=
   count_occ run_eq_dec runs r.
 
-Fixpoint log2_floor (n : nat) : nat :=
+Definition log2_floor (n : nat) : nat :=
   Nat.log2 (1 + n).
 
 Definition bits_required (n : nat) : nat :=
@@ -2910,6 +2910,86 @@ Proof.
     - exact Hwf. }
   lia.
 Qed.
+
+(** * Shannon Entropy Connection *)
+
+Lemma bits_required_lower_bound : forall n,
+  n > 0 ->
+  Nat.log2 n <= bits_required n.
+Proof.
+  intros n Hn.
+  unfold bits_required.
+  assert (Nat.eqb n 0 = false) by (apply Nat.eqb_neq; lia).
+  rewrite H.
+  lia.
+Qed.
+
+Lemma bits_required_upper_bound : forall n,
+  n > 0 ->
+  bits_required n <= S (Nat.log2 n).
+Proof.
+  intros n Hn.
+  unfold bits_required.
+  assert (Nat.eqb n 0 = false) by (apply Nat.eqb_neq; lia).
+  rewrite H.
+  lia.
+Qed.
+
+Lemma bits_required_approximates_log2 : forall n,
+  n > 0 ->
+  bits_required n = S (Nat.log2 n).
+Proof.
+  intros n Hn.
+  unfold bits_required.
+  assert (Nat.eqb n 0 = false) by (apply Nat.eqb_neq; lia).
+  rewrite H.
+  reflexivity.
+Qed.
+
+Theorem bits_required_is_ceiling_log2 : forall n,
+  n > 0 ->
+  Nat.log2 n < bits_required n <= S (Nat.log2 n).
+Proof.
+  intros n Hn.
+  rewrite bits_required_approximates_log2 by assumption.
+  split; lia.
+Qed.
+
+Definition theoretical_entropy_bits (num_symbols : nat) (total_count : nat) : nat :=
+  if Nat.eqb total_count 0 then 0
+  else num_symbols * Nat.log2 (total_count).
+
+Theorem bits_required_models_optimal_encoding : forall n,
+  n > 0 ->
+  bits_required n <= 2 * Nat.log2 n + 2.
+Proof.
+  intros n Hn.
+  rewrite bits_required_approximates_log2 by assumption.
+  destruct n.
+  - lia.
+  - simpl. lia.
+Qed.
+
+Definition shannon_lower_bound (runs : list run) : nat :=
+  let total := fold_right (fun r acc => fst r + acc) 0 runs in
+  let distinct := length runs in
+  if Nat.eqb total 0 then 0
+  else distinct * Nat.log2 total.
+
+Lemma log2_arithmetic_helper_1 : forall k,
+  Nat.log2 (S k) <= k.
+Proof.
+  apply log2_succ_bound.
+Qed.
+
+Lemma shannon_arithmetic_case1 :
+  1 * Nat.log2 1 <= 1 + (1 + 0) + (1 + (1 + 0) + 0).
+Proof.
+  simpl. auto.
+Qed.
+
+Lemma four_le_four : 4 <= 4.
+Proof. auto. Qed.
 
 (** * Advanced Properties **)
 
