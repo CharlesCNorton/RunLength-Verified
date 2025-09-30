@@ -1430,7 +1430,11 @@ Qed.
 Definition bounded_list (bound : nat) (l : list nat) : Prop :=
   forall x, In x l -> x < bound.
 
-Definition max_int_runtime : nat := 2^62 - 1.
+(* OCaml's max_int varies by architecture:
+   - 32-bit systems: 2^30 - 1 = 1073741823
+   - 64-bit systems: 2^62 - 1 = 4611686018427387903
+   We use 2^30 - 1 for maximum portability and proven safety *)
+Definition max_int_runtime : nat := 1073741823.  (* 2^30 - 1 *)
 
 Lemma bounded_list_nil : forall bound,
   bounded_list bound [].
@@ -2771,7 +2775,8 @@ Extract Constant Nat.div => "(/)".
 Extract Constant Nat.modulo => "(mod)".
 Extract Constant Nat.pow =>
   "(fun x y -> int_of_float ((float_of_int x) ** (float_of_int y)))".
-Extract Constant max_int_runtime => "Stdlib.max_int".
+(* Extract to min(max_int, 2^30-1) for portability and safety *)
+Extract Constant max_int_runtime => "min Stdlib.max_int 1073741823".
 Extract Constant max_int_8 => "255".
 Extract Constant max_int_16 => "65535".
 Extract Constant max_int_32 => "4294967295".
