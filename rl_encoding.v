@@ -246,6 +246,109 @@ Proof.
     + intros. apply rle_encode_aux_no_adjacent; [lia|auto].
 Qed.
 
+(** * Normalization *)
+
+Fixpoint normalize (runs : list run) : list run :=
+  match runs with
+  | [] => []
+  | (c, v) :: rest =>
+      if Nat.eqb c 0 then
+        normalize rest
+      else
+        match normalize rest with
+        | [] => [(c, v)]
+        | (c', v') :: rest' =>
+            if Nat.eqb v v' then
+              (c + c', v) :: rest'
+            else
+              (c, v) :: (c', v') :: rest'
+        end
+  end.
+
+Theorem normalize_well_formed : forall runs,
+  normalize runs = [] \/ well_formed_rle (normalize runs).
+Proof.
+  induction runs as [|[c v] rest IH].
+  - simpl. left. reflexivity.
+  - simpl. destruct (Nat.eqb c 0) eqn:Hc.
+    + exact IH.
+    + apply Nat.eqb_neq in Hc.
+      destruct (normalize rest) as [|[c' v'] rest'] eqn:Hnorm.
+      * right. unfold well_formed_rle. split.
+        -- intros r Hr. simpl in Hr. destruct Hr as [Heq|Hf]; [|contradiction].
+           subst r. simpl. lia.
+        -- intros i Hi. simpl in Hi. lia.
+      * destruct (Nat.eqb v v') eqn:Hv.
+        -- apply Nat.eqb_eq in Hv; subst v'.
+           destruct IH as [Hempty|Hwf].
+           ++ congruence.
+           ++ destruct Hwf as [Hpos Hadj].
+              assert (Hnorm_wf: well_formed_rle ((c', v) :: rest')).
+              { unfold well_formed_rle. split; [exact Hpos | exact Hadj]. }
+              right. unfold well_formed_rle. split.
+              ** intros r Hr. simpl in Hr. destruct Hr as [Heq|Hin].
+                 --- subst r. simpl.
+                     assert (In (c', v) ((c', v) :: rest')).
+                     { simpl. left. reflexivity. }
+                     apply Hpos in H. simpl in H. lia.
+                 --- apply Hpos. simpl. right. exact Hin.
+              ** intros i Hi. simpl. destruct rest' as [|[c'' v''] rest''].
+                 --- simpl in Hi. lia.
+                 --- destruct i.
+                     +++ simpl. simpl in Hadj.
+                         assert (0 < pred (length ((c', v) :: (c'', v'') :: rest''))).
+                         { simpl. lia. }
+                         specialize (Hadj 0 H). simpl in Hadj. exact Hadj.
+                     +++ simpl. simpl in Hadj.
+                         assert (S i < pred (length ((c', v) :: (c'', v'') :: rest''))).
+                         { simpl. simpl in Hi. apply Hi. }
+                         specialize (Hadj (S i) H). simpl in Hadj. exact Hadj.
+        -- apply Nat.eqb_neq in Hv.
+           destruct IH as [Hempty|Hwf].
+           ++ congruence.
+           ++ destruct Hwf as [Hpos Hadj].
+              right. unfold well_formed_rle. split.
+              ** intros r Hr. simpl in Hr. destruct Hr as [Heq|Hin].
+                 --- subst r. simpl. lia.
+                 --- destruct Hin as [Heq|Hin].
+                     +++ subst r. simpl.
+                         assert (In (c', v') ((c', v') :: rest')).
+                         { simpl. left. reflexivity. }
+                         apply Hpos in H. simpl in H. exact H.
+                     +++ apply Hpos. simpl. right. exact Hin.
+              ** intros i Hi. destruct i.
+                 --- simpl. exact Hv.
+                 --- simpl. destruct i.
+                     +++ destruct rest' as [|[c'' v''] rest''].
+                         *** simpl in Hi. lia.
+                         *** simpl. simpl in Hadj.
+                             assert (0 < pred (length ((c', v') :: (c'', v'') :: rest''))).
+                             { simpl. lia. }
+                             specialize (Hadj 0 H). simpl in Hadj. exact Hadj.
+                     +++ simpl. destruct rest' as [|[c'' v''] rest''].
+                         *** simpl in Hi. lia.
+                         *** simpl. simpl in Hadj.
+                             assert (S i < pred (length ((c', v') :: (c'', v'') :: rest''))).
+                             { simpl. simpl in Hi. apply Nat.succ_lt_mono. apply Hi. }
+                             specialize (Hadj (S i) H). simpl in Hadj. exact Hadj.
+Qed.
+
+Theorem normalize_correct : forall runs,
+  rle_decode (normalize runs) = rle_decode runs.
+Proof.
+  induction runs as [|[c v] rest IH].
+  - simpl. reflexivity.
+  - simpl. destruct (Nat.eqb c 0) eqn:Hc.
+    + apply Nat.eqb_eq in Hc; subst. simpl. exact IH.
+    + destruct (normalize rest) as [|[c' v'] rest'] eqn:Hnorm.
+      * simpl. rewrite <- IH. simpl. rewrite app_nil_r. reflexivity.
+      * destruct (Nat.eqb v v') eqn:Hv.
+        -- apply Nat.eqb_eq in Hv; subst v'. simpl.
+           rewrite <- IH. simpl.
+           rewrite app_assoc. rewrite repeat_app. reflexivity.
+        -- simpl. rewrite <- IH. simpl. reflexivity.
+Qed.
+
 (** * Injectivity *)
 
 (** Decoding distributes over concatenation of run lists. *)
@@ -1392,6 +1495,34 @@ Proof.
   intros runs Hwf Hval.
   exists (rle_decode runs).
   apply rle_encode_decode_identity_full; auto.
+Qed.
+
+Theorem encode_is_normalize : forall l runs,
+  rle_decode runs = l ->
+  l <> [] ->
+  normalize runs = rle_encode l.
+Proof.
+  intros l runs Hdec Hne.
+  assert (Hwf_norm: normalize runs = [] \/ well_formed_rle (normalize runs)).
+  { apply normalize_well_formed. }
+  assert (Hwf_enc: well_formed_rle (rle_encode l)).
+  { apply encode_well_formed. exact Hne. }
+  assert (Hval_norm: normalize runs = [] \/ is_valid_rle (normalize runs)).
+  { destruct Hwf_norm as [Hemp|Hwf]; [left; exact Hemp | right].
+    unfold is_valid_rle. intros. destruct Hwf as [Hpos _]. apply Hpos. exact H. }
+  assert (Hval_enc: is_valid_rle (rle_encode l)).
+  { unfold is_valid_rle. intros. destruct Hwf_enc as [Hpos _]. apply Hpos. exact H. }
+  destruct Hwf_norm as [Hempty|Hwf_norm].
+  - assert (rle_decode (normalize runs) = l) by (rewrite normalize_correct; exact Hdec).
+    rewrite Hempty in H. simpl in H. subst l. congruence.
+  - destruct Hval_norm as [Hempty|Hval_norm].
+    + assert (rle_decode (normalize runs) = l) by (rewrite normalize_correct; exact Hdec).
+      rewrite Hempty in H. simpl in H. subst l. congruence.
+    + assert (Hdec_norm: is_encoding_of (normalize runs) l).
+      { unfold is_encoding_of. rewrite normalize_correct. exact Hdec. }
+      assert (Hdec_enc: is_encoding_of (rle_encode l) l).
+      { unfold is_encoding_of. apply rle_correct. }
+      apply unique_well_formed_encoding with (l := l); auto.
 Qed.
 
 (** Encoding and decoding form a bijection on well-formed valid encodings. *)
