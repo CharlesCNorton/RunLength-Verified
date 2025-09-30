@@ -2124,6 +2124,17 @@ Proof.
   intros. eapply generic_encode_is_minimal; eauto.
 Qed.
 
+Corollary generic_rle_instantiable_for_any_type :
+  forall A (eqb : A -> A -> bool) (eqb_spec : forall x y, reflect (x = y) (eqb x y)) default,
+  forall l runs,
+    @generic_rle_decode A runs = l ->
+    @generic_is_valid_rle A runs ->
+    @generic_well_formed_rle A default runs ->
+    @generic_count_runs A eqb l <= length runs.
+Proof.
+  intros. eapply (@generic_encode_is_minimal A eqb eqb_spec default); unfold generic_decodes_to; eauto.
+Qed.
+
 (** * Formal Big-O Complexity Framework *)
 
 Definition is_O (f g : nat -> nat) : Prop :=
