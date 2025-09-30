@@ -2794,6 +2794,123 @@ Proof.
   intros. rewrite decode_auxiliary_space. reflexivity.
 Qed.
 
+(** * Information-Theoretic Characterization *)
+
+Definition run_eq_dec : forall (r1 r2 : run), {r1 = r2} + {r1 <> r2}.
+Proof.
+  decide equality; apply Nat.eq_dec.
+Defined.
+
+Fixpoint count_distinct_runs (l : list nat) : nat :=
+  count_runs l.
+
+Definition run_frequency (r : run) (runs : list run) : nat :=
+  count_occ run_eq_dec runs r.
+
+Fixpoint log2_floor (n : nat) : nat :=
+  Nat.log2 (1 + n).
+
+Definition bits_required (n : nat) : nat :=
+  if Nat.eqb n 0 then 1 else S (Nat.log2 n).
+
+Definition empirical_run_entropy_numerator (l : list nat) : nat :=
+  let runs := rle_encode l in
+  let total_runs := length runs in
+  if Nat.eqb total_runs 0 then 0
+  else fold_right (fun r acc =>
+    let freq := run_frequency r runs in
+    if Nat.eqb freq 0 then acc
+    else acc + freq * bits_required freq
+  ) 0 runs.
+
+Definition min_encoding_bits (l : list nat) : nat :=
+  let num_runs := count_runs l in
+  num_runs * bits_required num_runs.
+
+Theorem rle_encoding_size_lower_bound : forall l,
+  l <> [] ->
+  encode_space_usage l >= count_runs l.
+Proof.
+  intros l Hne.
+  unfold encode_space_usage.
+  rewrite encode_space_usage_formula.
+  assert (count_runs l = length (rle_encode l)).
+  { symmetry. apply rle_length. }
+  rewrite <- H.
+  destruct (count_runs l).
+  - lia.
+  - lia.
+Qed.
+
+Lemma bits_required_positive : forall n,
+  bits_required n > 0.
+Proof.
+  intros. unfold bits_required.
+  destruct (Nat.eqb n 0); lia.
+Qed.
+
+Lemma bits_required_log_bound : forall n,
+  n > 0 ->
+  bits_required n <= S n.
+Proof.
+  intros n Hn.
+  unfold bits_required.
+  assert (Nat.eqb n 0 = false).
+  { apply Nat.eqb_neq. lia. }
+  rewrite H.
+  assert (Nat.log2 n <= n).
+  { induction n.
+    - lia.
+    - transitivity n; [|lia].
+      apply log2_succ_bound. }
+  lia.
+Qed.
+
+Definition entropy_compression_ratio (l : list nat) : nat * nat :=
+  let encoded_size := encode_space_usage l in
+  let min_bits := min_encoding_bits l in
+  (encoded_size, min_bits).
+
+Theorem entropy_lower_bound_fundamental : forall l,
+  l <> [] ->
+  let (encoded, min_bits) := entropy_compression_ratio l in
+  encoded >= count_runs l.
+Proof.
+  intros l Hne.
+  unfold entropy_compression_ratio.
+  simpl.
+  apply rle_encoding_size_lower_bound.
+  exact Hne.
+Qed.
+
+Definition run_structure_complexity (l : list nat) : nat :=
+  count_runs l.
+
+Theorem compressibility_characterized_by_runs : forall l,
+  encode_space_usage l = 2 * run_structure_complexity l.
+Proof.
+  intros. unfold encode_space_usage, run_structure_complexity.
+  rewrite encode_space_usage_formula.
+  rewrite rle_length.
+  ring.
+Qed.
+
+Theorem no_rle_below_run_count : forall l encoding,
+  l <> [] ->
+  is_valid_rle encoding ->
+  well_formed_rle encoding ->
+  rle_decode encoding = l ->
+  length encoding >= count_runs l.
+Proof.
+  intros l encoding Hne Hvalid Hwf Hdec.
+  assert (Hmin: count_runs l <= length encoding).
+  { apply encode_is_minimal with (runs := encoding).
+    - unfold decodes_to. exact Hdec.
+    - exact Hvalid.
+    - exact Hwf. }
+  lia.
+Qed.
+
 (** * Advanced Properties **)
 
 Lemma last_cons : forall A (x : A) l d,
@@ -4374,12 +4491,6 @@ Proof.
 Qed.
 
 (** * Test Suite *)
-
-(** Decidable equality for runs. *)
-Definition run_eq_dec : forall (r1 r2 : run), {r1 = r2} + {r1 <> r2}.
-Proof.
-  decide equality; apply Nat.eq_dec.
-Defined.
 
 (** Test that decode-encode is a fixpoint for valid runs. *)
 Definition test_decode_encode_fixpoint (runs : list run) : bool :=
