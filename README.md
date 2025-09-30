@@ -28,7 +28,7 @@ The normalization procedure proves that any sequence of runs with zero counts or
 
 ## Proof Architecture
 
-The development comprises approximately 2,500 lines of Coq across several interconnected modules. The core correctness section establishes the fundamental roundtrip property through auxiliary lemmas characterizing the encode-decode relationship. Well-formedness proofs demonstrate that all encodings produced by the canonical encoder satisfy positivity and no-adjacent-duplicates properties. Injectivity follows from the fact that distinct inputs produce distinct encodings, which combined with correctness implies bijectivity on the domain of well-formed encodings.
+The development comprises approximately 5,000 lines of Coq across several interconnected modules. The core correctness section establishes the fundamental roundtrip property through auxiliary lemmas characterizing the encode-decode relationship. Well-formedness proofs demonstrate that all encodings produced by the canonical encoder satisfy positivity and no-adjacent-duplicates properties. Injectivity follows from the fact that distinct inputs produce distinct encodings, which combined with correctness implies bijectivity on the domain of well-formed encodings.
 
 The optimality section contains the most technically demanding proofs, requiring careful induction and case analysis to show that the canonical encoding achieves minimal length. The proof strategy involves first establishing bounds on run counts for auxiliary functions, then showing these bounds are tight for the primary encoder. The uniqueness theorem combines optimality with well-formedness to conclude that any two minimal encodings must be identical.
 
