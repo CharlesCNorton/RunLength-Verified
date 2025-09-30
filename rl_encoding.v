@@ -1,14 +1,14 @@
 (******************************************************************************)
 (*                                                                            *)
-(*  Run-Length Encoding: A Complete Formalization                             *)
+(*  Run-Length Encoding: A Complete Formalization                            *)
 (*                                                                            *)
-(*  A formally verified implementation of the Run-Length Encoding             *)
-(*  compression algorithm in Coq, with complete correctness proofs            *)
-(*  and comprehensive specifications including well-formedness,               *)
-(*  injectivity, compression bounds, and optimality properties.               *)
+(*  A formally verified implementation of the Run-Length Encoding            *)
+(*  compression algorithm in Coq, with complete correctness proofs           *)
+(*  and comprehensive specifications including well-formedness,              *)
+(*  injectivity, compression bounds, and optimality properties.              *)
 (*                                                                            *)
-(*  Author: Charles C. Norton                                                 *)
-(*  Date: September 29, 2025                                                  *)
+(*  Author: Charles C. Norton                                                *)
+(*  Date: September 29, 2025                                                 *)
 (*                                                                            *)
 (******************************************************************************)
 
@@ -18,6 +18,7 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Logic.Decidable.
 Require Import Coq.micromega.Lia.
+Require Import Coq.Lists.ListSet.
 Import ListNotations.
 
 (** * Core Definitions *)
@@ -305,6 +306,82 @@ Proof.
   - reflexivity.
   - rewrite Nat.eqb_refl. assumption.
 Qed.
+
+(** * Compression Ratio Analysis *)
+
+Definition compression_ratio_num (original : list nat) (encoded : list run) : nat :=
+  length original.
+
+Definition compression_ratio_den (original : list nat) (encoded : list run) : nat :=
+  length encoded.
+
+Theorem compression_ratio_uniform : forall n val,
+  n > 0 ->
+  compression_ratio_num (repeat n val) (rle_encode (repeat n val)) = n /\
+  compression_ratio_den (repeat n val) (rle_encode (repeat n val)) = 1.
+Proof.
+  intros. split.
+  - unfold compression_ratio_num. apply repeat_length.
+  - unfold compression_ratio_den. apply rle_best_case. exact H.
+Qed.
+
+Definition worst_case_list (n : nat) : list nat :=
+  map (fun i => i mod 2) (seq 0 n).
+
+Lemma worst_case_list_length : forall n,
+  length (worst_case_list n) = n.
+Proof.
+  intros. unfold worst_case_list.
+  rewrite map_length. apply seq_length.
+Qed.
+
+Lemma no_compression_worst : forall l,
+  (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
+  length (rle_encode l) = length l.
+Proof.
+  intros l H. rewrite rle_length.
+  destruct l as [|h t]; [reflexivity|].
+  unfold count_runs. simpl.
+  generalize dependent h. induction t; intros.
+  - reflexivity.
+  - simpl. destruct (Nat.eqb a h) eqn:Heq.
+    + apply Nat.eqb_eq in Heq. subst.
+      assert (0 < pred (length (h :: h :: t))) by (simpl; lia).
+      specialize (H 0 H0). simpl in H. congruence.
+    + simpl. f_equal.
+      apply IHt. intros.
+      assert (S i < pred (length (h :: a :: t))) by (simpl; simpl in H0; lia).
+      specialize (H (S i) H1). simpl in H. exact H.
+Qed.
+
+Theorem compression_ratio_no_benefit : forall l,
+  (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
+  compression_ratio_num l (rle_encode l) = length l /\
+  compression_ratio_den l (rle_encode l) = length l.
+Proof.
+  intros. split.
+  - unfold compression_ratio_num. reflexivity.
+  - unfold compression_ratio_den. apply no_compression_worst. exact H.
+Qed.
+
+Theorem rle_beneficial : forall n val,
+  count_runs (repeat (S (S n)) val) <= S n.
+Proof.
+  intros. unfold count_runs. simpl.
+  rewrite Nat.eqb_refl.
+  induction n; simpl.
+  - reflexivity.
+  - rewrite Nat.eqb_refl. lia.
+Qed.
+
+Corollary compression_achievable : forall n val,
+  n > 1 ->
+  length (rle_encode (repeat n val)) < length (repeat n val).
+Proof.
+  intros. rewrite rle_best_case; [|lia].
+  rewrite repeat_length. exact H.
+Qed.
+
 
 (** * Optimality *)
 
@@ -2709,3 +2786,4 @@ Extraction "rle_encoding.ml"
   rle_encode_u8 rle_encode_u16 rle_encode_u32
   rle_decode_u8 rle_decode_u16 rle_decode_u32
   bounded_rle_encode bounded_rle_decode.
+    
