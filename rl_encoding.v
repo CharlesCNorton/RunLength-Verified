@@ -2507,11 +2507,20 @@ Qed.
 
 (** * Space Complexity Analysis *)
 
+Definition word_size : nat := 8.
+
 Definition run_memory_size (r : run) : nat :=
   let (count, val) := r in 1 + 1.
 
+Definition run_memory_size_with_overhead (r : run) : nat :=
+  let (count, val) := r in
+  word_size + word_size + 1.
+
 Definition encode_space_usage (l : list nat) : nat :=
   fold_right (fun r acc => run_memory_size r + acc) 0 (rle_encode l).
+
+Definition encode_space_usage_realistic (l : list nat) : nat :=
+  fold_right (fun r acc => run_memory_size_with_overhead r + acc) 0 (rle_encode l).
 
 Definition decode_space_usage (runs : list run) : nat :=
   length (rle_decode runs).
@@ -2527,6 +2536,19 @@ Proof.
     unfold run_memory_size at 1. simpl. rewrite IH. simpl. ring.
 Qed.
 
+Lemma encode_space_usage_realistic_formula : forall runs,
+  fold_right (fun r acc => run_memory_size_with_overhead r + acc) 0 runs =
+  (2 * word_size + 1) * length runs.
+Proof.
+  induction runs as [|r rs IH].
+  - reflexivity.
+  - destruct r as [c v].
+    change (fold_right (fun r0 acc => run_memory_size_with_overhead r0 + acc) 0 ((c, v) :: rs))
+      with (run_memory_size_with_overhead (c, v) + fold_right (fun r0 acc => run_memory_size_with_overhead r0 + acc) 0 rs).
+    unfold run_memory_size_with_overhead at 1. simpl.
+    rewrite IH. simpl. ring.
+Qed.
+
 (** Encoding space usage is bounded by twice the input length. *)
 Theorem encode_space_bounded : forall l,
   encode_space_usage l <= 2 * length l.
@@ -2535,6 +2557,15 @@ Proof.
   rewrite encode_space_usage_formula.
   assert (Hlen: length (rle_encode l) <= length l) by apply rle_worst_case.
   lia.
+Qed.
+
+Theorem encode_space_realistic_bounded : forall l,
+  encode_space_usage_realistic l <= (2 * word_size + 1) * length l.
+Proof.
+  intros. unfold encode_space_usage_realistic.
+  rewrite encode_space_usage_realistic_formula.
+  assert (Hlen: length (rle_encode l) <= length l) by apply rle_worst_case.
+  unfold word_size. lia.
 Qed.
 
 (** Decoding space equals the sum of run counts. *)
