@@ -1460,6 +1460,107 @@ Proof.
     + rewrite Hlen_eq. apply rle_length.
 Qed.
 
+Theorem optimal_encoding_decision : forall l runs,
+  l <> [] ->
+  well_formed_rle runs ->
+  is_valid_rle runs ->
+  rle_decode runs = l ->
+  (length runs = length (rle_encode l) <-> runs = rle_encode l).
+Proof.
+  intros l runs Hne Hwf Hval Hdec.
+  split; intro H.
+  - apply (wf_encoding_minimal_implies_unique l runs (rle_encode l)); auto.
+    + apply encode_well_formed. exact Hne.
+    + apply rle_encode_is_valid. exact Hne.
+    + apply rle_correct.
+    + rewrite H. rewrite rle_length. reflexivity.
+    + apply rle_length.
+  - rewrite H. reflexivity.
+Qed.
+
+Theorem rle_encode_canonical : forall l1 l2,
+  l1 <> [] -> l2 <> [] ->
+  rle_encode l1 = rle_encode l2 ->
+  l1 = l2.
+Proof.
+  intros l1 l2 Hne1 Hne2 Heq.
+  rewrite <- (rle_correct l1).
+  rewrite <- (rle_correct l2).
+  rewrite Heq. reflexivity.
+Qed.
+
+Theorem rle_decode_encode_retract : forall l,
+  l <> [] ->
+  rle_encode (rle_decode (rle_encode l)) = rle_encode l.
+Proof.
+  intros l Hne.
+  rewrite rle_correct. reflexivity.
+Qed.
+
+Theorem rle_optimal_compression_ratio : forall l,
+  l <> [] ->
+  forall runs,
+    well_formed_rle runs ->
+    is_valid_rle runs ->
+    rle_decode runs = l ->
+    count_runs l <= length runs.
+Proof.
+  intros l Hne runs Hwf Hval Hdec.
+  rewrite <- rle_length.
+  apply rle_encode_achieves_minimum; auto.
+Qed.
+
+Theorem compression_space_trichotomy : forall l runs,
+  l <> [] ->
+  well_formed_rle runs ->
+  is_valid_rle runs ->
+  rle_decode runs = l ->
+  (length runs < length (rle_encode l) /\ False) \/
+  (length runs = length (rle_encode l) /\ runs = rle_encode l) \/
+  (length runs > length (rle_encode l) /\ runs <> rle_encode l).
+Proof.
+  intros l runs Hne Hwf Hval Hdec.
+  destruct (Nat.lt_trichotomy (length runs) (length (rle_encode l))) as [Hlt|[Heq|Hgt]].
+  - left. split; auto.
+    assert (length (rle_encode l) <= length runs).
+    { apply rle_encode_achieves_minimum; auto. }
+    lia.
+  - right. left. split; auto.
+    apply optimal_encoding_decision; auto.
+  - right. right. split.
+    + exact Hgt.
+    + intro Hcontra. subst runs. lia.
+Qed.
+
+Theorem kolmogorov_complexity_for_rle : forall l k,
+  l <> [] ->
+  (exists runs,
+    well_formed_rle runs /\
+    is_valid_rle runs /\
+    rle_decode runs = l /\
+    length runs = k) ->
+  count_runs l <= k.
+Proof.
+  intros l k Hne [runs [Hwf [Hval [Hdec Hlen]]]].
+  rewrite <- rle_length. rewrite <- Hlen.
+  apply rle_encode_achieves_minimum; auto.
+Qed.
+
+Theorem rle_complexity_characterization : forall l,
+  l <> [] ->
+  forall k,
+    k < count_runs l ->
+    ~(exists runs,
+      well_formed_rle runs /\
+      is_valid_rle runs /\
+      rle_decode runs = l /\
+      length runs = k).
+Proof.
+  intros l Hne k Hlt [runs [Hwf [Hval [Hdec Hlen]]]].
+  assert (count_runs l <= k) by (eapply kolmogorov_complexity_for_rle; eauto; exists runs; auto).
+  lia.
+Qed.
+
 Definition sanitize_runs (runs : list run) : list run :=
   filter (fun r => match fst r with 0 => false | _ => true end) runs.
 
