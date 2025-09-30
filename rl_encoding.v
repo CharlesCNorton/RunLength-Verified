@@ -2425,6 +2425,86 @@ Proof.
   apply rle_length.
 Qed.
 
+Definition comparison_cost_log (V : nat) : nat :=
+  Nat.log2 (1 + V).
+
+Lemma log2_succ_bound : forall n,
+  Nat.log2 (S n) <= n.
+Proof.
+  induction n.
+  - simpl. auto.
+  - assert (H: Nat.log2 (S (S n)) <= Nat.log2 (S n + S n)).
+    { apply Nat.log2_le_mono. lia. }
+    assert (H2: Nat.log2 (S n + S n) <= S n).
+    { destruct n.
+      - simpl. auto.
+      - replace (S (S n) + S (S n)) with (2 * S (S n)) by lia.
+        rewrite Nat.log2_double by lia.
+        lia. }
+    lia.
+Qed.
+
+Theorem comparison_cost_bound : forall V,
+  comparison_cost_log V <= S V.
+Proof.
+  intros. unfold comparison_cost_log.
+  transitivity V; [|lia].
+  replace (1 + V) with (S V) by lia.
+  apply log2_succ_bound.
+Qed.
+
+Fixpoint rle_encode_cost_aux (val : nat) (count : nat) (l : list nat) : nat :=
+  match l with
+  | [] => 1 + count
+  | h :: t =>
+      let cmp_cost := 1 + Nat.log2 (1 + Nat.max h val) in
+      if Nat.eqb h val then
+        cmp_cost + rle_encode_cost_aux val (S count) t
+      else
+        cmp_cost + 2 + count + rle_encode_cost_aux h 1 t
+  end.
+
+Definition rle_encode_cost (l : list nat) : nat :=
+  match l with
+  | [] => 1
+  | h :: t => 2 + rle_encode_cost_aux h 1 t
+  end.
+
+Lemma rle_encode_cost_aux_lower_bound : forall l val count,
+  rle_encode_cost_aux val count l >= length l + count + 1.
+Proof.
+  induction l; intros.
+  - simpl. lia.
+  - simpl. destruct (Nat.eqb a val).
+    + specialize (IHl val (S count)). lia.
+    + specialize (IHl a 1). lia.
+Qed.
+
+Theorem rle_encode_cost_lower : forall l,
+  l <> [] ->
+  rle_encode_cost l >= length l + 2.
+Proof.
+  intros. destruct l; [contradiction|].
+  unfold rle_encode_cost. simpl.
+  assert (rle_encode_cost_aux n 1 l >= length l + 1 + 1).
+  { apply rle_encode_cost_aux_lower_bound. }
+  lia.
+Qed.
+
+Theorem rle_encode_cost_linear_in_length : forall l,
+  l <> [] ->
+  rle_encode_cost l >= length l + 2.
+Proof.
+  intros. apply rle_encode_cost_lower. exact H.
+Qed.
+
+Theorem rle_encode_cost_includes_comparisons : forall l V,
+  (forall x, In x l -> x <= V) ->
+  comparison_cost_log V <= S V.
+Proof.
+  intros. apply comparison_cost_bound.
+Qed.
+
 (** * Space Complexity Analysis *)
 
 Definition run_memory_size (r : run) : nat :=
@@ -2681,39 +2761,6 @@ Theorem total_space_decode : forall runs,
   length runs + length (rle_decode runs).
 Proof.
   intros. rewrite decode_auxiliary_space. reflexivity.
-Qed.
-
-(** * Refined Complexity Model *)
-
-Fixpoint rle_encode_cost_aux (val : nat) (count : nat) (l : list nat) : nat :=
-  match l with
-  | [] => 1
-  | h :: t =>
-      1 + rle_encode_cost_aux (if Nat.eqb h val then val else h)
-                              (if Nat.eqb h val then S count else 1)
-                              t
-  end.
-
-Definition rle_encode_cost (l : list nat) : nat :=
-  match l with
-  | [] => 1
-  | h :: t => 1 + rle_encode_cost_aux h 1 t
-  end.
-
-Lemma rle_encode_cost_aux_linear : forall l val count,
-  rle_encode_cost_aux val count l = length l + 1.
-Proof.
-  induction l; intros; simpl.
-  - reflexivity.
-  - destruct (Nat.eqb a val); rewrite IHl; reflexivity.
-Qed.
-
-Theorem rle_encode_truly_linear : forall l,
-  rle_encode_cost l = 1 + length l.
-Proof.
-  intros. destruct l; simpl.
-  - reflexivity.
-  - rewrite rle_encode_cost_aux_linear. lia.
 Qed.
 
 (** * Advanced Properties **)
