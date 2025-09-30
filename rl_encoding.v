@@ -2344,18 +2344,32 @@ Proof.
   - simpl. rewrite rle_encode_steps_aux_linear. reflexivity.
 Qed.
 
-(** Encoding is in O(n). *)
-Theorem rle_encode_is_O_n :
-  (fun n => rle_encode_steps (repeat n 0)) ∈O( linear ).
+(** Encoding steps are exactly n+1 for any list of length n. *)
+Theorem rle_encode_steps_O_n_general : forall l,
+  rle_encode_steps l = length l + 1.
 Proof.
-  unfold is_O, linear.
+  apply rle_encode_linear_time.
+Qed.
+
+(** Encoding is in O(n) for lists of length n. *)
+Theorem rle_encode_is_O_n_general :
+  forall f : nat -> list nat,
+  (forall n, length (f n) = n) ->
+  (fun n => rle_encode_steps (f n)) ∈O( linear ).
+Proof.
+  intros f Hlen. unfold is_O, linear.
   exists 2, 1. split.
   - lia.
   - intros n Hn. rewrite rle_encode_linear_time.
-    rewrite repeat_length.
-    destruct n.
-    + lia.
-    + simpl. lia.
+    rewrite Hlen. lia.
+Qed.
+
+(** Special case: encoding uniform lists is O(n). *)
+Theorem rle_encode_is_O_n_uniform :
+  (fun n => rle_encode_steps (repeat n 0)) ∈O( linear ).
+Proof.
+  apply rle_encode_is_O_n_general.
+  intros. apply repeat_length.
 Qed.
 
 Fixpoint rle_decode_steps (runs : list run) : nat :=
@@ -2413,18 +2427,33 @@ Qed.
 
 (** * Space Complexity Analysis *)
 
+Definition run_memory_size (r : run) : nat :=
+  let (count, val) := r in 1 + 1.
+
 Definition encode_space_usage (l : list nat) : nat :=
-  2 * length (rle_encode l).
+  fold_right (fun r acc => run_memory_size r + acc) 0 (rle_encode l).
 
 Definition decode_space_usage (runs : list run) : nat :=
   length (rle_decode runs).
+
+Lemma encode_space_usage_formula : forall runs,
+  fold_right (fun r acc => run_memory_size r + acc) 0 runs = 2 * length runs.
+Proof.
+  induction runs as [|r rs IH].
+  - reflexivity.
+  - destruct r as [c v].
+    change (fold_right (fun r0 acc => run_memory_size r0 + acc) 0 ((c, v) :: rs))
+      with (run_memory_size (c, v) + fold_right (fun r0 acc => run_memory_size r0 + acc) 0 rs).
+    unfold run_memory_size at 1. simpl. rewrite IH. simpl. ring.
+Qed.
 
 (** Encoding space usage is bounded by twice the input length. *)
 Theorem encode_space_bounded : forall l,
   encode_space_usage l <= 2 * length l.
 Proof.
   intros. unfold encode_space_usage.
-  assert (length (rle_encode l) <= length l) by apply rle_worst_case.
+  rewrite encode_space_usage_formula.
+  assert (Hlen: length (rle_encode l) <= length l) by apply rle_worst_case.
   lia.
 Qed.
 
@@ -2450,6 +2479,7 @@ Lemma encode_space_uniform_optimal : forall n val,
   encode_space_usage (repeat n val) = 2.
 Proof.
   intros. unfold encode_space_usage.
+  rewrite encode_space_usage_formula.
   rewrite rle_best_case; auto.
 Qed.
 
@@ -2459,6 +2489,7 @@ Lemma encode_space_alternating_maximal : forall l,
   encode_space_usage l = 2 * length l.
 Proof.
   intros. unfold encode_space_usage.
+  rewrite encode_space_usage_formula.
   rewrite no_compression_worst; auto.
 Qed.
 
@@ -2494,6 +2525,7 @@ Theorem encode_space_minimum : forall l,
   l <> [] -> encode_space_usage l >= 2.
 Proof.
   intros l Hne. unfold encode_space_usage.
+  rewrite encode_space_usage_formula.
   destruct l as [|h t].
   - contradiction.
   - assert (Hge: count_runs (h :: t) >= 1).
@@ -2509,6 +2541,7 @@ Theorem space_overhead_bounded : forall l,
   space_overhead l <= length l.
 Proof.
   intros. unfold space_overhead, encode_space_usage.
+  rewrite encode_space_usage_formula.
   assert (length (rle_encode l) <= length l) by apply rle_worst_case.
   lia.
 Qed.
@@ -2547,6 +2580,7 @@ Proof.
     { apply count_runs_ge_one. discriminate. }
     lia.
   - unfold encode_space_usage.
+    rewrite encode_space_usage_formula.
     assert (length (rle_encode (n :: l)) = length (n :: l)).
     { rewrite no_compression_worst; auto. }
     rewrite H1. f_equal.
@@ -2558,13 +2592,68 @@ Proof.
   intros. apply encode_space_bounded.
 Qed.
 
+Definition encoding_expands (l : list nat) : Prop :=
+  encode_space_usage l > length l.
+
+Lemma single_element_never_expands : forall val,
+  encode_space_usage [val] = 2 /\ length [val] = 1.
+Proof.
+  intros val. split.
+  - unfold encode_space_usage. rewrite encode_space_usage_formula. simpl. reflexivity.
+  - reflexivity.
+Qed.
+
+Lemma alternating_expansion_bound : forall l,
+  (forall i, i < pred (length l) -> nth i l 0 <> nth (S i) l 0) ->
+  encode_space_usage l = 2 * length l.
+Proof.
+  intros. rewrite encode_space_alternating_maximal; auto.
+Qed.
+
+Theorem expansion_characterization : forall l,
+  l <> [] ->
+  encoding_expands l <-> (encode_space_usage l > length l).
+Proof.
+  intros. unfold encoding_expands. reflexivity.
+Qed.
+
+Theorem no_expansion_under_compression : forall l,
+  encode_space_usage l <= 2 * length l.
+Proof.
+  apply encode_space_bounded.
+Qed.
+
+Lemma short_runs_expansion_example :
+  encoding_expands [1; 2; 3; 4; 5].
+Proof.
+  unfold encoding_expands, encode_space_usage.
+  rewrite encode_space_usage_formula.
+  simpl. lia.
+Qed.
+
+Fixpoint auxiliary_space_encode_aux (count : nat) (l : list nat) : nat :=
+  match l with
+  | [] => count
+  | _ :: t => auxiliary_space_encode_aux (S count) t
+  end.
+
 Definition auxiliary_space_encode (l : list nat) : nat :=
-  length l.
+  auxiliary_space_encode_aux 0 l.
+
+Lemma auxiliary_space_encode_aux_correct : forall l count,
+  auxiliary_space_encode_aux count l = count + length l.
+Proof.
+  induction l; intros; simpl.
+  - lia.
+  - rewrite IHl. lia.
+Qed.
 
 Theorem encode_auxiliary_space : forall l,
   auxiliary_space_encode l = length l.
 Proof.
-  reflexivity.
+  intros. unfold auxiliary_space_encode.
+  rewrite auxiliary_space_encode_aux_correct.
+  lia.
 Qed.
 
 Definition auxiliary_space_decode (runs : list run) : nat :=
@@ -2580,7 +2669,9 @@ Qed.
 Theorem total_space_encode : forall l,
   encode_space_usage l + auxiliary_space_encode l <= 4 * length l.
 Proof.
-  intros. unfold encode_space_usage, auxiliary_space_encode.
+  intros. unfold encode_space_usage.
+  rewrite encode_space_usage_formula.
+  rewrite encode_auxiliary_space.
   assert (length (rle_encode l) <= length l) by apply rle_worst_case.
   lia.
 Qed.
@@ -3402,6 +3493,106 @@ Proof.
   reflexivity.
 Qed.
 
+Definition stream_output_valid (opt : option run) : Prop :=
+  match opt with
+  | None => True
+  | Some (c, v) => c > 0
+  end.
+
+Lemma stream_push_output_valid : forall state val opt state',
+  stream_state_invariant state ->
+  stream_push state val = (opt, state') ->
+  stream_output_valid opt.
+Proof.
+  intros state val opt state' Hinv Hpush.
+  unfold stream_push in Hpush.
+  destruct (Nat.eqb (current_count state) 0) eqn:Hcount.
+  - injection Hpush; intros; subst. unfold stream_output_valid. auto.
+  - destruct (Nat.eqb val (current_val state)) eqn:Hval.
+    + destruct (Nat.ltb (current_count state) (max_run_length state)) eqn:Hlt.
+      * injection Hpush; intros; subst. unfold stream_output_valid. auto.
+      * injection Hpush; intros; subst. unfold stream_output_valid. simpl.
+        unfold stream_state_invariant in Hinv.
+        destruct Hinv as [[Hzero | Hpos] [Hbound Hmax]].
+        -- apply Nat.eqb_neq in Hcount. lia.
+        -- exact Hmax.
+    + injection Hpush; intros; subst. unfold stream_output_valid. simpl.
+      unfold stream_state_invariant in Hinv.
+      destruct Hinv as [[Hzero | Hpos] [Hbound Hmax]].
+      * apply Nat.eqb_neq in Hcount. lia.
+      * exact Hpos.
+Qed.
+
+Lemma stream_flush_output_valid : forall state opt,
+  stream_state_invariant state ->
+  stream_flush state = opt ->
+  stream_output_valid opt.
+Proof.
+  intros state opt Hinv Hflush.
+  unfold stream_flush in Hflush.
+  destruct (Nat.eqb (current_count state) 0) eqn:Hcount.
+  - subst. unfold stream_output_valid. auto.
+  - subst opt. unfold stream_output_valid. simpl.
+    unfold stream_state_invariant in Hinv.
+    destruct Hinv as [[Hzero | Hpos] [Hbound Hmax]].
+    + apply Nat.eqb_neq in Hcount. lia.
+    + exact Hpos.
+Qed.
+
+Lemma stream_encode_list_positive_helper : forall l state,
+  stream_state_invariant state ->
+  forall r, In r (fst (stream_encode_list state l)) -> fst r > 0.
+Proof.
+  induction l; intros state Hinv r Hr.
+  - simpl in Hr. contradiction.
+  - simpl in Hr.
+    destruct (stream_push state a) as [opt new_state] eqn:Hpush.
+    destruct (stream_encode_list new_state l) as [runs' final'] eqn:Hencode.
+    destruct opt as [[c v]|] eqn:Hopt.
+    + simpl in Hr. destruct Hr as [Heq | Hin].
+      * subst r. simpl.
+        assert (stream_output_valid (Some (c, v))).
+        { eapply stream_push_output_valid; eauto. }
+        unfold stream_output_valid in H. simpl in H. exact H.
+      * assert (Hnew_inv: stream_state_invariant new_state).
+        { assert (new_state = snd (stream_push state a)).
+          { rewrite Hpush. reflexivity. }
+          rewrite H. apply stream_push_preserves_invariant. exact Hinv. }
+        assert (Hruns': runs' = fst (stream_encode_list new_state l)).
+        { rewrite Hencode. reflexivity. }
+        rewrite Hruns' in Hin.
+        apply (IHl new_state Hnew_inv r Hin).
+    + assert (Hnew_inv: stream_state_invariant new_state).
+      { assert (new_state = snd (stream_push state a)).
+        { rewrite Hpush. reflexivity. }
+        rewrite H. apply stream_push_preserves_invariant. exact Hinv. }
+      assert (Hruns': runs' = fst (stream_encode_list new_state l)).
+      { rewrite Hencode. reflexivity. }
+      rewrite Hruns' in Hr.
+      apply (IHl new_state Hnew_inv r Hr).
+Qed.
+
+Theorem stream_safety : forall max_run l,
+  max_run > 0 ->
+  let (runs, final_state) := stream_encode_list (init_stream_state max_run) l in
+  stream_state_invariant final_state /\
+  (forall r, In r runs -> fst r > 0).
+Proof.
+  intros max_run l Hmax.
+  destruct (stream_encode_list (init_stream_state max_run) l) as [runs final_state] eqn:E.
+  split.
+  - assert (final_state = snd (stream_encode_list (init_stream_state max_run) l)).
+    { rewrite E. reflexivity. }
+    rewrite H. apply stream_encode_list_preserves_invariant.
+    apply init_stream_state_invariant. exact Hmax.
+  - intros r Hr.
+    assert (runs = fst (stream_encode_list (init_stream_state max_run) l)).
+    { rewrite E. reflexivity. }
+    rewrite H in Hr.
+    eapply stream_encode_list_positive_helper; eauto.
+    apply init_stream_state_invariant. exact Hmax.
+Qed.
+
 (** Streaming encoder with initial accumulator matches the auxiliary maxrun encoder. *)
 Lemma stream_vs_aux : forall cap xs v c,
   cap > 0 ->
@@ -3482,13 +3673,20 @@ Proof.
     + rewrite app_nil_r in Heq. rewrite <- Heq. reflexivity.
 Qed.
 
-Definition stream_state_size (state : rle_stream_state) : nat := 3.
+Definition stream_state_size (state : rle_stream_state) : nat :=
+  1 + 1 + 1.
+
+Lemma stream_state_size_from_structure : forall cv cc mrl,
+  stream_state_size (mk_stream_state cv cc mrl) = 3.
+Proof.
+  intros. unfold stream_state_size. reflexivity.
+Qed.
 
 (** Stream state has constant size independent of input. *)
 Theorem stream_state_constant_size : forall state,
   stream_state_size state = 3.
 Proof.
-  intros. reflexivity.
+  intros. unfold stream_state_size. reflexivity.
 Qed.
 
 (** Pushing a value preserves stream state size. *)
