@@ -90,6 +90,7 @@ coqc rl_encoding.v
 ```
 
 This produces `rle_encoding.vo` (compiled Coq object) and `rle_encoding.ml` (extracted OCaml code). The OCaml code requires OCaml 4.12 or later and has no external dependencies beyond the standard library.
+```
 
 ## Acknowledgments
 
