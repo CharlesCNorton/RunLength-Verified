@@ -4761,6 +4761,41 @@ Eval compute in test_impossible_compression.
 Eval compute in test_incremental_consistency [1;1;1] [1;1;1].
 Eval compute in well_formed_rle (rle_encode [1;1;1;1;1]).
 
+(** Formal test proofs using vm_compute *)
+Lemma test_decode_encode_fixpoint_verified :
+  test_decode_encode_fixpoint [(3, 1)] = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_streaming_equivalence_verified :
+  test_streaming_equivalence [1;1;2;2;3;3] = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_worst_case_verified :
+  test_worst_case = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_best_case_verified :
+  test_best_case = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_impossible_compression_verified :
+  test_impossible_compression = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_incremental_consistency_verified :
+  test_incremental_consistency [1;1;1] [1;1;1] = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma well_formed_rle_example_verified :
+  well_formed_rle (rle_encode [1;1;1;1;1]).
+Proof.
+  unfold well_formed_rle. split.
+  - intros r Hr. apply rle_encode_aux_positive with (val := 1) (count := 1) (l := [1;1;1;1]).
+    + lia.
+    + exact Hr.
+  - intros i Hi. apply rle_encode_aux_no_adjacent; [lia|exact Hi].
+Qed.
+
 (** Test that double roundtrip preserves both list and encoding. *)
 Definition test_double_roundtrip (l : list nat) : bool :=
   let e1 := rle_encode l in
@@ -4820,6 +4855,31 @@ Eval compute in test_compression_never_expands.
 Eval compute in test_encode_preserves_length_sum.
 Eval compute in test_maxrun_decode_equals_standard.
 
+(** Additional formal test proofs using vm_compute *)
+Lemma test_double_roundtrip_verified :
+  test_double_roundtrip [1;1;2;2;3;3] = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_maxrun_boundary_verified :
+  test_maxrun_boundary = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_streaming_state_consistency_verified :
+  test_streaming_state_consistency = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_compression_never_expands_verified :
+  test_compression_never_expands = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_encode_preserves_length_sum_verified :
+  test_encode_preserves_length_sum = true.
+Proof. vm_compute. reflexivity. Qed.
+
+Lemma test_maxrun_decode_equals_standard_verified :
+  test_maxrun_decode_equals_standard = true.
+Proof. vm_compute. reflexivity. Qed.
+
 (** Test that streaming decoder equals batch decoder. *)
 Definition test_streaming_decoder_equivalent : bool :=
   let runs := [(3, 1); (2, 2); (4, 3)] in
@@ -4829,6 +4889,62 @@ Definition test_streaming_decoder_equivalent : bool :=
   if list_eq_dec Nat.eq_dec streamed batched then true else false.
 
 Eval compute in test_streaming_decoder_equivalent.
+
+Lemma test_streaming_decoder_equivalent_verified :
+  test_streaming_decoder_equivalent = true.
+Proof. vm_compute. reflexivity. Qed.
+
+(** * Concrete Roundtrip Examples *)
+
+(** Roundtrip verification for uniform data *)
+Example roundtrip_uniform :
+  rle_decode (rle_encode [5;5;5;5;5;5;5;5]) = [5;5;5;5;5;5;5;5].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Roundtrip verification for alternating data *)
+Example roundtrip_alternating :
+  rle_decode (rle_encode [1;2;1;2;1;2]) = [1;2;1;2;1;2].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Roundtrip verification for mixed runs *)
+Example roundtrip_mixed :
+  rle_decode (rle_encode [1;1;1;2;2;3;3;3;3;4]) = [1;1;1;2;2;3;3;3;3;4].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Roundtrip verification for empty list *)
+Example roundtrip_empty :
+  rle_decode (rle_encode []) = [].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Roundtrip verification for singleton *)
+Example roundtrip_singleton :
+  rle_decode (rle_encode [42]) = [42].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Encoding uniform list produces single run *)
+Example encode_uniform_single_run :
+  rle_encode [7;7;7;7;7] = [(5, 7)].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Encoding alternating produces no compression *)
+Example encode_alternating_no_compression :
+  length (rle_encode [1;2;3;4;5]) = 5.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Maxrun encoding splits long runs *)
+Example maxrun_splits_long_run :
+  length (rle_encode_maxrun 3 [1;1;1;1;1;1]) = 2.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Maxrun roundtrip correctness *)
+Example maxrun_roundtrip :
+  rle_decode (rle_encode_maxrun 10 [5;5;5;5;5;5;5;5]) = [5;5;5;5;5;5;5;5].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Streaming encoder equivalence to batch *)
+Example streaming_batch_equivalence :
+  stream_complete_encode 100 [1;1;2;2;3;3] = rle_encode_maxrun 100 [1;1;2;2;3;3].
+Proof. vm_compute. reflexivity. Qed.
 
 
 (** * Production OCaml Extraction *)
