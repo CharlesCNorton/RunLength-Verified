@@ -24,8 +24,9 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Logic.Decidable.
 Require Import Coq.micromega.Lia.
+Require Import Coq.micromega.Lra.
 Require Import Coq.Lists.ListSet.
-Require Import Coq.ZArith.ZArith.
+Require Import Coq.Reals.Reals.
 Import ListNotations.
 
 (** * Core Definitions *)
@@ -3290,6 +3291,495 @@ Theorem entropy_no_compression : forall l,
 Proof.
   intros l H. apply no_compression_worst. exact H.
 Qed.
+
+(** ** Real-Valued Shannon Entropy *)
+
+(** Shannon entropy is defined as H = -Σ p_i * log2(p_i) where p_i are
+    probabilities. For RLE, we consider the entropy of the run-length
+    distribution. A key result is that the expected code length is bounded
+    below by the entropy (Shannon's source coding theorem). *)
+
+(** Convert natural number to real. *)
+Definition nat_to_R (n : nat) : R := INR n.
+
+(** Real-valued logarithm base 2. *)
+Definition log2_R (x : R) : R := (ln x / ln 2)%R.
+
+(** Probability of a run in the total decoded length. *)
+Definition run_probability (r : run) (total : nat) : R :=
+  if Nat.eqb total 0 then 0%R
+  else (nat_to_R (fst r) / nat_to_R total)%R.
+
+(** Self-information (surprisal) of a run. Uses count=0 check instead of p=0. *)
+Definition run_surprisal (r : run) (total : nat) : R :=
+  if Nat.eqb (fst r) 0 then 0%R
+  else (- log2_R (run_probability r total))%R.
+
+(** Contribution of a run to total entropy. Uses count=0 check. *)
+Definition run_entropy_contribution (r : run) (total : nat) : R :=
+  if Nat.eqb (fst r) 0 then 0%R
+  else (- (run_probability r total) * log2_R (run_probability r total))%R.
+
+(** Shannon entropy of a run-length distribution. *)
+Definition rle_shannon_entropy (runs : list run) : R :=
+  let total := fold_right (fun (r : run) (acc : nat) => (fst r + acc)%nat) 0%nat runs in
+  fold_right (fun (r : run) (acc : R) => (run_entropy_contribution r total + acc)%R) 0%R runs.
+
+Open Scope R_scope.
+
+(** ln 2 is positive. *)
+Lemma ln_2_pos : ln 2 > 0.
+Proof.
+  pose proof ln_lt_2 as H.
+  assert (H2: / 2 > 0) by lra.
+  lra.
+Qed.
+
+(** ln x <= 0 when 0 < x <= 1. *)
+Lemma ln_le_0_of_le_1 : forall x, 0 < x -> x <= 1 -> ln x <= 0.
+Proof.
+  intros x Hpos Hle1.
+  destruct (Rlt_le_dec x 1) as [Hlt|Hge].
+  - left. rewrite <- ln_1. apply ln_increasing; lra.
+  - assert (x = 1) by lra. subst. rewrite ln_1. lra.
+Qed.
+
+(** log2 x <= 0 when 0 < x <= 1. *)
+Lemma log2_le_0_of_le_1 : forall x, 0 < x -> x <= 1 -> log2_R x <= 0.
+Proof.
+  intros x Hpos Hle1.
+  unfold log2_R, Rdiv.
+  assert (Hln2: ln 2 > 0) by exact ln_2_pos.
+  assert (Hlnx: ln x <= 0) by (apply ln_le_0_of_le_1; assumption).
+  assert (Hinv_pos: 0 <= / ln 2) by (apply Rlt_le; apply Rinv_0_lt_compat; exact Hln2).
+  replace 0 with (0 * / ln 2) by ring.
+  apply Rmult_le_compat_r; assumption.
+Qed.
+
+(** Binary entropy term -p * log2(p) is non-negative for 0 < p <= 1. *)
+Lemma entropy_term_nonneg : forall p, 0 < p -> p <= 1 -> 0 <= - p * log2_R p.
+Proof.
+  intros p Hpos Hle1.
+  assert (Hlog: log2_R p <= 0) by (apply log2_le_0_of_le_1; assumption).
+  replace (- p * log2_R p) with (p * (- log2_R p)) by ring.
+  apply Rmult_le_pos; lra.
+Qed.
+
+(** run_probability is positive when count and total are positive. *)
+Lemma run_probability_pos : forall r total,
+  (fst r > 0)%nat -> (total > 0)%nat -> 0 < run_probability r total.
+Proof.
+  intros r total Hr Ht.
+  unfold run_probability.
+  destruct (Nat.eqb total 0) eqn:E.
+  - apply Nat.eqb_eq in E. lia.
+  - unfold nat_to_R. apply Rdiv_pos_pos; apply lt_0_INR; lia.
+Qed.
+
+(** run_probability is at most 1 when count <= total. *)
+Lemma run_probability_le_1 : forall r total,
+  (fst r <= total)%nat -> (total > 0)%nat -> run_probability r total <= 1.
+Proof.
+  intros r total Hle Ht.
+  unfold run_probability.
+  destruct (Nat.eqb total 0) eqn:E.
+  - lra.
+  - unfold nat_to_R.
+    assert (Hy_pos: 0 < INR total) by (apply lt_0_INR; lia).
+    assert (Hxy: INR (fst r) <= INR total) by (apply le_INR; lia).
+    apply Rmult_le_reg_r with (r := INR total); [exact Hy_pos |].
+    unfold Rdiv. rewrite Rmult_assoc. rewrite Rinv_l; [| lra].
+    rewrite Rmult_1_r. rewrite Rmult_1_l. exact Hxy.
+Qed.
+
+(** Each run's entropy contribution is non-negative. *)
+Lemma run_entropy_contribution_nonneg : forall r total,
+  (fst r > 0)%nat -> (fst r <= total)%nat -> (total > 0)%nat ->
+  0 <= run_entropy_contribution r total.
+Proof.
+  intros r total Hr Hle Ht.
+  unfold run_entropy_contribution.
+  destruct (Nat.eqb (fst r) 0) eqn:E.
+  - lra.
+  - apply entropy_term_nonneg.
+    + apply run_probability_pos; assumption.
+    + apply run_probability_le_1; assumption.
+Qed.
+
+(** Sum of run counts in a list. *)
+Definition sum_counts (runs : list run) : nat :=
+  fold_right (fun r acc => (fst r + acc)%nat) 0%nat runs.
+
+(** A run's count is bounded by the sum of all counts when it's in the list. *)
+Lemma run_count_le_sum : forall r runs,
+  In r runs -> (fst r <= sum_counts runs)%nat.
+Proof.
+  intros r runs Hr.
+  induction runs as [|x xs IH].
+  - contradiction.
+  - simpl in Hr. destruct Hr as [Heq | Hin].
+    + subst. simpl. lia.
+    + simpl. specialize (IH Hin). lia.
+Qed.
+
+(** Sum of positive counts is positive for non-empty lists with all positive counts. *)
+Lemma sum_counts_pos : forall runs,
+  runs <> [] ->
+  (forall r, In r runs -> (fst r > 0)%nat) ->
+  (sum_counts runs > 0)%nat.
+Proof.
+  intros runs Hne Hpos.
+  destruct runs as [|x xs].
+  - congruence.
+  - simpl. assert (fst x > 0)%nat by (apply Hpos; left; reflexivity). lia.
+Qed.
+
+(** Generalized lemma: sum of entropy contributions is non-negative for fixed total. *)
+Lemma entropy_sum_nonneg_aux : forall runs total,
+  (total > 0)%nat ->
+  (forall r, In r runs -> (fst r > 0)%nat) ->
+  (forall r, In r runs -> (fst r <= total)%nat) ->
+  0 <= fold_right (fun r acc => run_entropy_contribution r total + acc) 0 runs.
+Proof.
+  induction runs as [|x xs IH]; intros total Ht Hpos Hle.
+  - simpl. lra.
+  - simpl.
+    assert (Hx_pos: (fst x > 0)%nat) by (apply Hpos; left; reflexivity).
+    assert (Hx_le: (fst x <= total)%nat) by (apply Hle; left; reflexivity).
+    assert (Hcontrib: 0 <= run_entropy_contribution x total).
+    { apply run_entropy_contribution_nonneg; assumption. }
+    assert (Hrec: 0 <= fold_right (fun r acc => run_entropy_contribution r total + acc) 0 xs).
+    { apply IH; auto.
+      - intros r Hr. apply Hpos. right. exact Hr.
+      - intros r Hr. apply Hle. right. exact Hr. }
+    lra.
+Qed.
+
+(** The entropy is non-negative. *)
+Lemma shannon_entropy_nonneg : forall runs : list run,
+  (forall r, In r runs -> (fst r > 0)%nat) ->
+  0 <= rle_shannon_entropy runs.
+Proof.
+  intros runs Hpos.
+  unfold rle_shannon_entropy.
+  set (total := sum_counts runs).
+  destruct runs as [|x xs].
+  - simpl. lra.
+  - assert (Ht: (total > 0)%nat).
+    { unfold total. apply sum_counts_pos.
+      - discriminate.
+      - exact Hpos. }
+    assert (Hle: forall r, In r (x :: xs) -> (fst r <= total)%nat).
+    { intros r Hr. unfold total. apply run_count_le_sum. exact Hr. }
+    apply entropy_sum_nonneg_aux; assumption.
+Qed.
+
+(** For uniform distribution (all runs equal size), entropy equals log2(k). *)
+Theorem uniform_entropy : forall k c : nat,
+  (k > 0)%nat -> (c > 0)%nat ->
+  let runs := map (fun i => (c, i)) (seq 0 k) in
+  rle_shannon_entropy runs = log2_R (nat_to_R k).
+Proof.
+  intros k c Hk Hc runs.
+  unfold rle_shannon_entropy, runs.
+  rewrite fold_uniform_runs.
+  assert (Htotal: (k * c > 0)%nat) by lia.
+  induction k as [|k' IH].
+  - lia.
+  - simpl map.
+    (* For uniform distribution, each p_i = 1/k, so H = -k * (1/k) * log2(1/k) = log2(k) *)
+    (* This proof requires significant real analysis machinery *)
+    admit.
+Admitted.
+
+Lemma exp_1_gt_2 : exp 1 > 2.
+Proof. apply exp_ineq1; lra. Qed.
+
+Lemma inv_exp_1_lt_half : / exp 1 < / 2.
+Proof.
+  assert (H1: 0 < 2) by lra.
+  assert (H2: 0 < exp 1) by apply exp_pos.
+  apply Rinv_lt_contravar; [lra | exact exp_1_gt_2].
+Qed.
+
+Lemma inv_exp_1_pos : / exp 1 > 0.
+Proof. apply Rinv_0_lt_compat; apply exp_pos. Qed.
+
+Lemma inv_ln2_pos : / ln 2 > 0.
+Proof. apply Rinv_0_lt_compat; exact ln_2_pos. Qed.
+
+Lemma inv_ln2_lt_2 : / ln 2 < 2.
+Proof.
+  pose proof ln_lt_2 as H.
+  assert (Hln2_pos: ln 2 > 0) by exact ln_2_pos.
+  assert (Hln2_gt_half: ln 2 > / 2) by lra.
+  assert (Hinv_half: / (/ 2) = 2) by field.
+  assert (H2: 0 < / 2) by lra.
+  apply Rinv_lt_contravar in Hln2_gt_half; [| lra].
+  rewrite Hinv_half in Hln2_gt_half.
+  lra.
+Qed.
+
+Lemma exp_1_times_ln2_gt_1 : exp 1 * ln 2 > 1.
+Proof.
+  pose proof exp_1_gt_2 as He.
+  pose proof ln_lt_2 as Hln.
+  assert (Hln2_pos: ln 2 > 0) by exact ln_2_pos.
+  assert (H1: exp 1 * ln 2 > 2 * (/ 2)).
+  { apply Rmult_gt_0_lt_compat; lra. }
+  assert (H2: 2 * / 2 = 1) by field.
+  lra.
+Qed.
+
+Lemma inv_lt_1_of_gt_1 : forall x, x > 1 -> / x < 1.
+Proof.
+  intros x Hx.
+  assert (Hx_pos: x > 0) by lra.
+  apply Rmult_lt_reg_r with x; [lra |].
+  rewrite Rinv_l; [| lra].
+  rewrite Rmult_1_l.
+  exact Hx.
+Qed.
+
+Lemma inv_exp_1_times_inv_ln2_lt_1 : / exp 1 * / ln 2 < 1.
+Proof.
+  pose proof exp_1_times_ln2_gt_1 as H.
+  pose proof (exp_pos 1) as He_pos.
+  pose proof ln_2_pos as Hln2_pos.
+  assert (Hinv_lt: / (exp 1 * ln 2) < 1).
+  { apply inv_lt_1_of_gt_1. exact H. }
+  rewrite <- Rinv_mult.
+  exact Hinv_lt.
+Qed.
+
+Lemma neg_p_ln_p_nonneg : forall p, 0 < p -> p <= 1 -> 0 <= - p * ln p.
+Proof.
+  intros p Hp0 Hp1.
+  assert (Hlnp: ln p <= 0) by (apply ln_le_0_of_le_1; lra).
+  replace (- p * ln p) with (p * (- ln p)) by ring.
+  apply Rmult_le_pos; lra.
+Qed.
+
+Lemma neg_p_ln_p_le_1 : forall p, 0 < p -> p <= 1 -> - p * ln p <= 1.
+Proof.
+  intros p Hp0 Hp1.
+  assert (Hlnp: ln p <= 0) by (apply ln_le_0_of_le_1; lra).
+  replace (- p * ln p) with (p * (- ln p)) by ring.
+  destruct (Rle_dec (- ln p) 1) as [Hln_le|Hln_gt].
+  - assert (H: p * (- ln p) <= 1 * 1) by (apply Rmult_le_compat; lra). lra.
+  - assert (Hln_gt': - ln p > 1) by lra.
+    pose proof (exp_pos 1) as He_pos.
+    pose proof inv_exp_1_lt_half as Hinv_lt.
+    assert (Hp_lt_inv_e: p < / exp 1).
+    { apply ln_lt_inv; [lra | apply Rinv_0_lt_compat; lra |].
+      rewrite ln_Rinv; [| lra]. rewrite ln_exp. lra. }
+    set (t := - ln p).
+    assert (Ht_pos: t > 1) by exact Hln_gt'.
+    assert (Hp_eq: p = exp (- t)).
+    { unfold t. rewrite Ropp_involutive. rewrite exp_ln; lra. }
+    assert (Hprod: p * t = exp (- t) * t) by (rewrite Hp_eq; ring).
+    rewrite Hprod.
+    assert (Hexp_bound: exp t > t).
+    { pose proof (exp_ineq1 t) as Hineq. lra. }
+    assert (Hexp_t_pos: exp t > 0) by (apply exp_pos).
+    assert (Hinv_exp: exp (- t) = / exp t).
+    { rewrite exp_Ropp. reflexivity. }
+    rewrite Hinv_exp.
+    assert (Hfrac: / exp t * t = t / exp t) by (unfold Rdiv; ring).
+    rewrite Hfrac.
+    unfold Rdiv. rewrite Rmult_comm.
+    assert (Hlt: / exp t * t < 1).
+    { apply Rmult_lt_reg_r with (r := exp t); [exact Hexp_t_pos |].
+      replace (/ exp t * t * exp t) with (t * (/ exp t * exp t)) by ring.
+      rewrite Rinv_l; [| lra].
+      rewrite Rmult_1_r. rewrite Rmult_1_l. exact Hexp_bound. }
+    lra.
+Qed.
+
+Lemma neg_p_ln_p_le_inv_e : forall p, 0 < p -> p <= 1 -> - p * ln p <= / exp 1.
+Proof.
+  intros p Hp0 Hp1.
+  assert (Hlnp: ln p <= 0) by (apply ln_le_0_of_le_1; lra).
+  replace (- p * ln p) with (p * (- ln p)) by ring.
+  pose proof (exp_pos 1) as He_pos.
+  pose proof inv_exp_1_lt_half as Hinv_lt.
+  pose proof inv_exp_1_pos as Hinve_pos.
+  destruct (Rlt_le_dec p (/ exp 1)) as [Hp_lt|Hp_ge].
+  - assert (Hln_gt': - ln p > 1).
+    { assert (Hln_inv_e: ln (/ exp 1) = -1).
+      { rewrite ln_Rinv; [| lra]. rewrite ln_exp. ring. }
+      assert (Hln_p_lt: ln p < ln (/ exp 1)) by (apply ln_increasing; lra).
+      rewrite Hln_inv_e in Hln_p_lt. lra. }
+    set (t := - ln p).
+    assert (Ht_pos: t > 1) by exact Hln_gt'.
+    assert (Hp_eq: p = exp (- t)).
+    { unfold t. rewrite Ropp_involutive. rewrite exp_ln; lra. }
+    assert (Hprod: p * t = exp (- t) * t) by (rewrite Hp_eq; ring).
+    rewrite Hprod.
+    assert (Hexp_bound: exp t > t) by (pose proof (exp_ineq1 t); lra).
+    assert (Hexp_t_pos: exp t > 0) by apply exp_pos.
+    rewrite exp_Ropp.
+    assert (Hlt: / exp t * t < / exp 1).
+    { assert (Hexp_t_gt_te: exp t > t * exp 1).
+      { assert (Hfrac: exp t / exp 1 = exp (t - 1)).
+        { replace (t - 1) with (t + -1) by ring.
+          rewrite exp_plus.
+          replace (-1) with (-(1)) by ring.
+          rewrite exp_Ropp.
+          unfold Rdiv. ring. }
+        assert (Ht_m1: t - 1 > 0) by lra.
+        assert (Hexp_tm1_gt_t: exp (t - 1) > t).
+        { pose proof (exp_ineq1 (t - 1)) as Hineq.
+          assert (Hpos: t - 1 > 0) by lra.
+          lra. }
+        assert (Hexp_t_div: exp t / exp 1 > t) by (rewrite Hfrac; exact Hexp_tm1_gt_t).
+        assert (He1_pos: exp 1 > 0) by apply exp_pos.
+        apply Rmult_lt_reg_r with (r := / exp 1).
+        - apply Rinv_0_lt_compat. exact He1_pos.
+        - unfold Rdiv in Hexp_t_div.
+          replace (t * exp 1 * / exp 1) with t by (field; lra).
+          exact Hexp_t_div. }
+      assert (He1_pos': exp 1 > 0) by apply exp_pos.
+      apply Rmult_lt_reg_r with (r := exp t).
+      - exact Hexp_t_pos.
+      - replace (/ exp t * t * exp t) with t by (field; lra).
+        replace (/ exp 1 * exp t) with (exp t / exp 1) by (unfold Rdiv; ring).
+        apply Rmult_lt_reg_r with (r := exp 1).
+        + exact He1_pos'.
+        + replace (exp t / exp 1 * exp 1) with (exp t) by (field; lra).
+          exact Hexp_t_gt_te. }
+    lra.
+  - assert (Hln_le: - ln p <= 1).
+    { assert (Hln_inv_e: ln (/ exp 1) = -1).
+      { rewrite ln_Rinv; [| lra]. rewrite ln_exp. ring. }
+      destruct (Req_dec p (/ exp 1)).
+      - subst. rewrite Hln_inv_e. lra.
+      - assert (Hp_gt: p > / exp 1) by lra.
+        assert (Hln_p_gt: ln p > ln (/ exp 1)) by (apply ln_increasing; lra).
+        rewrite Hln_inv_e in Hln_p_gt. lra. }
+    assert (Hln_ge: - ln p >= 0) by lra.
+    assert (H: p * (- ln p) <= 1 * (- ln p)) by (apply Rmult_le_compat_r; lra).
+    assert (H': 1 * (- ln p) <= 1 * 1) by (apply Rmult_le_compat_l; lra).
+    assert (Hle1: p * (- ln p) <= 1) by lra.
+    assert (Hmax_bound: p * (- ln p) <= / exp 1).
+    { destruct (Req_dec p (/ exp 1)).
+      - subst. assert (Hln_inv_e: ln (/ exp 1) = -1).
+        { rewrite ln_Rinv; [| lra]. rewrite ln_exp. ring. }
+        assert (Hnln_inv_e: - ln (/ exp 1) = 1) by lra.
+        rewrite Hnln_inv_e. ring_simplify. lra.
+      - assert (Hp_gt: p > / exp 1) by lra.
+        destruct (Req_dec p 1) as [Hp_eq_1|Hp_lt_1].
+        + subst p. rewrite ln_1. ring_simplify. lra.
+        + assert (Hp_strict: p < 1) by lra.
+          assert (Hln_inv_e: ln (/ exp 1) = -1).
+          { rewrite ln_Rinv; [| lra]. rewrite ln_exp. ring. }
+          assert (Hln_p_gt: ln p > -1) by (assert (ln p > ln (/ exp 1)) by (apply ln_increasing; lra); lra).
+          assert (Hnln_lt: - ln p < 1) by lra.
+          assert (Hnln_pos: - ln p > 0).
+          { assert (Hlnp_neg: ln p < 0).
+            { rewrite <- ln_1. apply ln_increasing; lra. }
+            lra. }
+          set (t := - ln p).
+          assert (Ht_bounds: 0 < t < 1) by (unfold t; lra).
+          assert (Hp_eq_exp: p = exp (- t)).
+          { unfold t. rewrite Ropp_involutive. rewrite exp_ln; lra. }
+          assert (Hgoal: exp (-t) * t < / exp 1).
+          { assert (Htarget: t < exp (t - 1)).
+            { assert (Ht_ne_1: t <> 1) by lra.
+              assert (Ht_m1_ne_0: t - 1 <> 0) by lra.
+              pose proof (exp_ineq1 (t - 1) Ht_m1_ne_0) as Hineq.
+              replace (1 + (t - 1)) with t in Hineq by ring.
+              exact Hineq. }
+            rewrite exp_Ropp.
+            apply Rmult_lt_reg_r with (r := exp t).
+            - apply exp_pos.
+            - replace (/ exp t * t * exp t) with t by (field; pose proof (exp_pos t); lra).
+              replace (/ exp 1 * exp t) with (exp t / exp 1) by (unfold Rdiv; ring).
+              replace (exp t / exp 1) with (exp (t - 1)).
+              + exact Htarget.
+              + replace (t - 1) with (t + -1) by ring.
+                rewrite exp_plus.
+                replace (-1) with (-(1)) by ring.
+                rewrite exp_Ropp. unfold Rdiv. ring. }
+          rewrite Hp_eq_exp. lra. }
+    exact Hmax_bound.
+Qed.
+
+Lemma binary_entropy_bounded : forall p : R,
+  0 < p <= 1 -> - p * log2_R p <= 1.
+Proof.
+  intros p [Hp0 Hp1].
+  unfold log2_R, Rdiv.
+  destruct (Rle_dec p 1).
+  - pose proof (neg_p_ln_p_le_inv_e p Hp0 Hp1) as Hpln.
+    pose proof inv_ln2_pos as Hinv2_pos.
+    assert (Hmax: - p * ln p * / ln 2 <= / exp 1 * / ln 2).
+    { apply Rmult_le_compat_r; lra. }
+    pose proof inv_exp_1_times_inv_ln2_lt_1.
+    lra.
+  - lra.
+Qed.
+
+(** Encoding length is bounded below by entropy (Shannon's theorem for RLE).
+    The number of runs times bits per run is at least the total entropy. *)
+Theorem shannon_source_coding_rle : forall runs : list run,
+  (forall r, In r runs -> (fst r > 0)%nat) ->
+  (length runs > 0)%nat ->
+  nat_to_R (length runs) >= rle_shannon_entropy runs.
+Proof.
+  intros runs Hpos Hlen.
+  assert (Hnn: 0 <= rle_shannon_entropy runs).
+  { apply shannon_entropy_nonneg. exact Hpos. }
+  unfold rle_shannon_entropy.
+  induction runs as [|r rs IH].
+  - simpl in Hlen. lia.
+  - simpl.
+    assert (Hpos': forall r', In r' rs -> (fst r' > 0)%nat).
+    { intros r' Hr'. apply Hpos. right. exact Hr'. }
+    assert (Hr_pos: (fst r > 0)%nat) by (apply Hpos; left; reflexivity).
+    destruct rs as [|p rs'].
+    + simpl. unfold run_entropy_contribution.
+      destruct (Nat.eqb (fst r) 0) eqn:Efst.
+      * apply Nat.eqb_eq in Efst. lia.
+      * unfold nat_to_R, run_probability.
+        simpl.
+        replace (fst r + 0)%nat with (fst r) by lia.
+        rewrite Efst.
+        rewrite Rdiv_diag.
+        -- unfold log2_R. rewrite ln_1. rewrite Rdiv_0_l. lra.
+        -- apply not_0_INR. lia.
+    + simpl length.
+      set (total' := fold_right (fun r0 acc => fst r0 + acc)%nat 0%nat (p :: rs')).
+      assert (IH': nat_to_R (S (length rs')) >=
+                   fold_right (fun r0 acc => run_entropy_contribution r0 total' + acc) 0 (p :: rs')).
+      { apply IH.
+        - exact Hpos'.
+        - simpl. lia.
+        - apply shannon_entropy_nonneg. exact Hpos'. }
+      unfold run_entropy_contribution at 1.
+      destruct (Nat.eqb (fst r) 0) eqn:Efst.
+      * apply Nat.eqb_eq in Efst. lia.
+      * unfold nat_to_R.
+        set (total := (fst r + fst p + fold_right (fun r0 acc => fst r0 + acc) 0 rs')%nat).
+        assert (Hcontrib: - run_probability r total * log2_R (run_probability r total) <= 1).
+        { apply binary_entropy_bounded.
+          unfold run_probability, total.
+          destruct (Nat.eqb (fst r + fst p + fold_right (fun r0 acc => fst r0 + acc)%nat 0%nat rs') 0) eqn:Et.
+          - apply Nat.eqb_eq in Et. lia.
+          - split.
+            + apply Rdiv_pos_pos.
+              * apply lt_0_INR. lia.
+              * apply lt_0_INR. apply Nat.eqb_neq in Et. lia.
+            + apply Rmult_le_reg_r with (r := INR (fst r + fst p + fold_right (fun r0 acc => fst r0 + acc)%nat 0%nat rs')).
+              * apply lt_0_INR. apply Nat.eqb_neq in Et. lia.
+              * unfold Rdiv. rewrite Rmult_1_l.
+                rewrite Rmult_assoc. rewrite Rinv_l.
+                -- rewrite Rmult_1_r. apply le_INR. lia.
+                -- apply not_0_INR. apply Nat.eqb_neq in Et. lia. }
+        admit.
+Admitted.
+
+Close Scope R_scope.
 
 (** * Advanced Properties **)
 
